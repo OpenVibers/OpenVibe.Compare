@@ -30,6 +30,7 @@ test('API, phone/table markup, URL weights, Markdown, Dataset, discovery and COR
   const html=await (await fetch(base+'/comparisons/ai-models?w.input=0')).text();assert.match(html,/phone-cards/);assert.match(html,/desktop-table/);assert.match(html,/<table/);assert.match(html,/value="0" data-weight="input"/);assert.match(html,/Dataset/);assert.match(html,/dateModified/);assert.match(html,/2026-11-10/);assert.match(html,/https:\/\/example.com\/prices/);
   const md=await (await fetch(base+'/comparisons/ai-models',{headers:{Accept:'text/markdown'}})).text();assert.match(md,/# AI models/);assert.match(md,/2026-11-10.*example.com/);
   for(const url of ['/','/things/maker%2Fm1','/llms.txt','/sitemap.xml','/robots.txt','/api/v1/comparisons/ai-models'])assert.equal((await fetch(base+url)).status,200,url);
+  const thing=await (await fetch(base+'/things/maker%2Fm1')).text();assert.match(thing,/<details class="evidence">/);assert.match(thing,/example.com\/prices/);
   assert.equal((await fetch(base+'/api/v1/comparisons/nope')).status,404);
  }finally{await new Promise(r=>server.close(r));}
 });
