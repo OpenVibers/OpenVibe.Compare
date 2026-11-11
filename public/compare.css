@@ -16,4 +16,4 @@ main a,main summary{overflow-wrap:anywhere}
 @media(prefers-color-scheme:dark){main thead th,main tr>th:first-child{background:var(--ov-bg,#171717)}}
 /* Shared's 34px sign-in link has an 8px expanded hit area. At the phone's
    6px outer gutter it overruns the viewport by 2px; keep a 48px tap area. */
-@media(max-width:799px){.openvibe-navbar .openvibe-navbar-login::after{right:-6px}}
+@media(max-width:799px){#navbar-mount .openvibe-navbar .openvibe-navbar-login::after{right:-6px}}
