@@ -31,6 +31,7 @@
    if(mode==='scatter'){
      const points=c.things.map(t=>({t,x:c.results.find(r=>r.thing===t.id&&r.criterion==='output'),y:c.results.find(r=>r.thing===t.id&&r.criterion==='quality')})).filter(p=>p.x&&p.y);
      if(!points.length){box.textContent='No models have both dated price and measured quality yet.';return;}
+     const axes=document.createElement('p');axes.textContent='Horizontal: output price (USD / million tokens). Vertical: arena quality (Elo); higher is better. Values, dates and sources below.';box.append(axes);
      const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 600 360');svg.setAttribute('role','img');svg.setAttribute('aria-label','Output price (horizontal, USD per million tokens) against arena quality (vertical, Elo). Values, dates and sources follow.');
      const xmax=Math.max(1,...points.map(p=>p.x.value)),ys=points.map(p=>p.y.value),ymin=Math.min(...ys),ymax=Math.max(...ys);
      for(const p of points){const circle=document.createElementNS(ns,'circle');circle.setAttribute('cx',40+520*p.x.value/xmax);circle.setAttribute('cy',310-270*(ymax===ymin?.5:(p.y.value-ymin)/(ymax-ymin)));circle.setAttribute('r',6);circle.setAttribute('fill','currentColor');const title=document.createElementNS(ns,'title');title.textContent=`${p.t.name}: ${p.x.value} USD / 1M output tokens, ${p.y.value} Elo`;circle.append(title);svg.append(circle);}

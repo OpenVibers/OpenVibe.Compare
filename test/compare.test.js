@@ -33,3 +33,9 @@ test('API, phone/table markup, URL weights, Markdown, Dataset, discovery and COR
   assert.equal((await fetch(base+'/api/v1/comparisons/nope')).status,404);
  }finally{await new Promise(r=>server.close(r));}
 });
+test('upstream adapters preserve cohorts, observation dates and unknown quality',()=>{
+ const f=structuredClone(fixture);f.quality.board.rows=[{model:'maker/m1',games:10,elo:null,median_ms:12}];
+ f.runs.runs=[{id:'run-a',benchmark:'patch@1',harness:{id:'codex',version:'1.2'},model:'model-a',score:70,created_at:at,provenance:'verified'},{id:'run-b',benchmark:'patch@1',harness:{id:'codex',version:'1.2'},model:'model-a',score:90,created_at:at,provenance:'submitted'}];
+ f.plans.plans=[{id:'vibes-100',name:'100 Vibes',kind:'package',vibes:100,price_cents:150,as_of:at,url:'https://openvibe.network/vibes'},{id:'membership',name:'Membership',kind:'membership',price_cents:499,period_days:30,as_of:at,url:'https://openvibe.vip'}];
+ const [models,agents,plans]=build(f,at);assert(!models.results.some(r=>r.criterion==='quality'));assert.equal(models.results.find(r=>r.criterion==='speed').value,12);assert.equal(agents.results.length,1);assert.equal(agents.results[0].value,70);assert.equal(agents.results[0].as_of,at);assert.match(agents.results[0].source.label,/1.2/);assert.equal(plans.results.find(r=>r.criterion==='package-price').value,1.5);assert.equal(plans.results.find(r=>r.criterion==='membership-price').value,4.99);
+});
