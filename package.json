@@ -1,0 +1,19 @@
+{
+  "name": "openvibe-compare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dated, sourced comparisons",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "express": "^4.21.2",
+    "openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.200.0"
+  }
+}
