@@ -1,4 +1,5 @@
 'use strict';
+const kit=require('openvibe-shared/kit');
 const shell=require('openvibe-shared/shell');
 const serve=require('openvibe-shared/serve');
 const {rank,weights}=require('../public/rank');
@@ -10,7 +11,7 @@ function score(n,c){return n===null?'Unranked':`<details><summary>${n.toFixed(1)
 function comparison(c,input={}) {
  const ranked=rank(c,input), w=weights(c,input);
  const cell=(t,k)=>number(c.results.find(r=>r.thing===t.id && r.criterion===k.id));
- return `<h1>${esc(c.title)}</h1><p>${esc(c.summary)}</p>${c.availability.map(s=>`<p role="status">${esc(s)}</p>`).join('')}
+ return `${kit.head({title:c.title,sub:c.summary,icon:'compare',sticky:false})}${c.availability.map(s=>`<p role="status">${esc(s)}</p>`).join('')}
  <p>Updated <time>${esc(c.updated_at.slice(0,10))}</time> · <a href="/api/v1/comparisons/${c.slug}">JSON data</a></p>
  <fieldset><legend>What matters to you</legend>${c.criteria.map(k=>`<label class="weight">${esc(k.label)} <input type="range" min="0" max="100" value="${w[k.id]}" data-weight="${esc(k.id)}"><output>${w[k.id]}</output></label>`).join('')}</fieldset>
  <p id="rank-note">Missing evidence stays unranked. Scores change with your weights; they are not a claim of statistical significance.</p>
@@ -25,7 +26,7 @@ function home(all,q='',task='balanced',budget='') {
  const taskWeights={balanced:{input:40,output:40,quality:20},writing:{input:10,output:30,quality:60},coding:{input:20,output:20,quality:60},speed:{input:10,output:10,quality:0,speed:80}};
  const limit=budget===''?Infinity:Number(budget);
  const picks=c?rank(c,taskWeights[task]||taskWeights.balanced).filter(r=>r.score!==null && c.results.some(v=>v.thing===r.thing.id && v.criterion==='output' && v.value<=limit)).slice(0,3):[];
- return `<h1>Compare anything</h1><form method="get"><fieldset><legend>For my use</legend><label>Task <select name="task">${[['balanced','General use'],['writing','Writing'],['coding','Coding'],['speed','Fast responses']].map(([v,l])=>`<option value="${v}" ${v===task?'selected':''}>${l}</option>`).join('')}</select></label> <label>Output budget (USD per million tokens) <input name="budget" type="number" min="0" step="0.01" value="${esc(budget)}" placeholder="Any"></label><button class="ovk-btn ovk-btn--primary">Find picks</button></fieldset></form>
+ return `${kit.head({title:'Compare anything',icon:'compare',sticky:false})}<form method="get"><fieldset><legend>For my use</legend><label>Task <select name="task">${[['balanced','General use'],['writing','Writing'],['coding','Coding'],['speed','Fast responses']].map(([v,l])=>`<option value="${v}" ${v===task?'selected':''}>${l}</option>`).join('')}</select></label> <label>Output budget (USD per million tokens) <input name="budget" type="number" min="0" step="0.01" value="${esc(budget)}" placeholder="Any"></label><button class="ovk-btn ovk-btn--primary">Find picks</button></fieldset></form>
  <p>Task presets adjust preferences. The available arena data does not establish task-specific coding or writing quality. Budget applies to output tokens, not monthly spend.</p>
  <div class="picks">${picks.map(({thing:t})=>`<article class="ovk-card"><h2><a href="${thingPath(t.id)}">${esc(t.name)}</a></h2><p>Fits your output-price budget and ranks under these weights${c.results.some(r=>r.criterion==='quality')?'':'; quality has not been measured'}.</p><p>Output price (${esc(c.criteria.find(k=>k.id==='output').unit)}): ${number(c.results.find(r=>r.thing===t.id&&r.criterion==='output'))}</p></article>`).join('')||'<p>No measured picks fit this budget.</p>'}</div>
  <form><label>Search comparisons <input name="q" value="${esc(q)}" type="search"></label><button class="ovk-btn ovk-btn--quiet">Search</button></form>

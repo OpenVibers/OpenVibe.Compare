@@ -3,6 +3,7 @@ const express=require('express');
 const path=require('node:path');
 const {createData}=require('./data');
 const v=require('./views');
+const origins=new Set(require('./origins.json')); 
 function createApp({getData=createData()}={}) {
  const app=express();app.disable('x-powered-by');
  app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','strict-origin-when-cross-origin');next();});
@@ -14,7 +15,7 @@ function createApp({getData=createData()}={}) {
  const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  app.use('/api/v1',(req,res,next)=>{
    const origin=req.get('Origin');
-   if(origin && /^https:\/\/(?:[a-z0-9-]+\.)*openvibe\.(?:network|compare|exchange|services|codes|report|billing)$/.test(origin)) res.set('Access-Control-Allow-Origin',origin);
+   if(origin && origins.has(origin)) res.set('Access-Control-Allow-Origin',origin);
    res.vary('Origin');res.set('Access-Control-Allow-Methods','GET, HEAD, OPTIONS');
    if(req.method==='OPTIONS')return res.sendStatus(204);next();
  });

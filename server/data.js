@@ -32,7 +32,7 @@ function build(feeds, at) {
    // Exact identity only: fuzzy joins can silently compare a different model revision.
    const q=(feeds.quality?.board?.rows || []).find(r => r.model === id || r.subject === id);
    if(q && q.games >= 10) {
-     result(models,id,'quality',Number(q.elo),q.updated_at || at,'Bench chat.arena; observation date when source date is absent',ENDPOINTS.quality);
+     result(models,id,'quality',q.elo == null ? null : Number(q.elo),q.updated_at || at,'Bench chat.arena; observation date when source date is absent',ENDPOINTS.quality);
      result(models,id,'speed',q.median_ms == null ? null : Number(q.median_ms),q.updated_at || at,'Bench chat.arena median total response time; observation date when absent',ENDPOINTS.quality);
    }
  }
@@ -45,14 +45,14 @@ function build(feeds, at) {
  for(const r of feeds.runs?.runs || []) {
    const id=r.harness?.id || r.harness?.name;
    if(r.provenance !== 'verified' || !agents.things.some(t=>t.id===id) || !r.benchmark || !date(r.created_at)) continue;
-   const key=`score:${r.benchmark}:${r.harness?.version || 'unspecified'}:${r.model?.id || r.model}`;
+   const key=`score:${r.benchmark}:${r.model?.id || r.model}`;
    if(seen.has(`${id}:${key}`)) continue;
    seen.add(`${id}:${key}`);
    if(!agents.criteria.some(c=>c.id===key)) agents.criteria.push(criterion(key,`${r.benchmark} · ${r.model?.id || r.model}`,'score','higher',1,'Verified runs'));
-   result(agents,id,key,typeof r.score==='number'?r.score:r.score?.value,r.created_at,'Bench verified run',`https://bench.openvibe.services/api/v1/runs/${encodeURIComponent(r.id)}`);
+   result(agents,id,key,typeof r.score==='number'?r.score:r.score?.value,r.created_at,`Bench verified run; ${id} ${r.harness?.version || 'version unspecified'}`,`https://bench.openvibe.services/api/v1/runs/${encodeURIComponent(r.id)}`);
  }
  if(!agents.criteria.length) agents.criteria=[criterion('verified-score','Verified benchmark score','score','higher',1,'Quality')];
- agents.method += ' Only verified public codes.patch runs are eligible. Benchmark, harness version and model form separate criteria; newest run per cohort is shown. Harness configuration prices are not product prices and are not used.';
+ agents.method += ' Only verified public codes.patch runs are eligible. Benchmark version and model form separate criteria; newest verified run per harness and cohort is shown, with the harness version in its source label. Harness configuration prices are not product prices and are not used.';
  const plans=base('openvibe-plans','OpenVibe plans','openvibe.plans','Published Billing offers. Packages and memberships have separate units and are not ranked together.',at);
  plans.criteria=[criterion('package-price','Package price','USD / purchase','lower',1,'Packages'),criterion('vibes','Package Vibes','Vibes / purchase','higher',1,'Packages'),criterion('membership-price','Membership price','USD / period','lower',0,'Membership'),criterion('period','Membership period','days','higher',0,'Membership')];
  for(const p of feeds.plans?.plans || []) {
