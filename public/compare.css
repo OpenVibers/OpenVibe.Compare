@@ -1,1 +1,19 @@
-main{max-width:1200px;margin:2rem auto;padding:1rem}fieldset{margin:1rem 0}label{display:inline-block;padding:.5rem}input,select,button,summary{min-height:44px}button,summary{cursor:pointer}.weight{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}.ovk-card{padding:1rem;margin:1rem 0;border:1px solid currentColor;border-radius:.5rem}dl>div{padding:.5rem 0}dd{margin:.25rem 0}.desktop-table{display:none}table{border-collapse:separate;border-spacing:0;width:100%}th,td{padding:.75rem;text-align:left;border-bottom:1px solid currentColor;vertical-align:top}pre{white-space:pre-wrap;overflow-wrap:anywhere}.evidence a{overflow-wrap:anywhere}svg{max-width:100%;height:auto}.chart-row{padding:.5rem 0}meter{width:8rem}a,summary{overflow-wrap:anywhere}@media(min-width:800px){.phone-cards{display:none}.desktop-table{display:block;overflow:auto;max-height:75vh}thead th{position:sticky;top:0;z-index:2;background:var(--ov-bg,#fff)}tr>th:first-child{position:sticky;left:0;background:var(--ov-bg,#fff);z-index:1}thead th:first-child{z-index:3}.picks,.comparison-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}}@media(prefers-color-scheme:dark){thead th,tr>th:first-child{background:var(--ov-bg,#171717)}}
+main{max-width:1200px;margin:2rem auto;padding:1rem}
+main fieldset{margin:1rem 0;min-inline-size:0}
+main label{display:inline-block;padding:.5rem;max-width:100%}
+main input,main select,main button,main summary{min-height:44px;max-width:100%}
+main button,main summary{cursor:pointer}
+.weight{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+main .ovk-card{padding:1rem;margin:1rem 0;border:1px solid currentColor;border-radius:.5rem}
+main dl>div{padding:.5rem 0}main dd{margin:.25rem 0}
+.desktop-table{display:none}
+main table{border-collapse:separate;border-spacing:0;width:100%}
+main th,main td{padding:.75rem;text-align:left;border-bottom:1px solid currentColor;vertical-align:top}
+main pre{white-space:pre-wrap;overflow-wrap:anywhere}.evidence a{overflow-wrap:anywhere}
+main svg{max-width:100%;height:auto}.chart-row{padding:.5rem 0}main meter{width:8rem}
+main a,main summary{overflow-wrap:anywhere}
+@media(min-width:800px){.phone-cards{display:none}.desktop-table{display:block;overflow:auto;max-height:75vh}main thead th{position:sticky;top:0;z-index:2;background:var(--ov-bg,#fff)}main tr>th:first-child{position:sticky;left:0;background:var(--ov-bg,#fff);z-index:1}main thead th:first-child{z-index:3}.picks,.comparison-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}}
+@media(prefers-color-scheme:dark){main thead th,main tr>th:first-child{background:var(--ov-bg,#171717)}}
+/* Shared's 34px sign-in link has an 8px expanded hit area. At the phone's
+   6px outer gutter it overruns the viewport by 2px; keep a 48px tap area. */
+@media(max-width:799px){.openvibe-navbar .openvibe-navbar-login::after{right:-6px}}
