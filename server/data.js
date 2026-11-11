@@ -40,7 +40,7 @@ function build(feeds, at) {
  models.method += ' Prices use the cheapest dated offer by input + output price; both prices come from that same provider. Arena quality requires at least ten judged games and exact model identity. Speed is total response time, not tokens per second.';
  const agents=base('coding-agents','AI coding agents','ai.coding-agents','Coding harnesses from Codes, with verified public Bench runs where available.',at);
  const hs=feeds.harnesses?.harnesses || [];
- agents.things=hs.map(h => ({id:h.id,name:h.name,maker:h.provider,url:`https://openvibe.codes/harnesses/${encodeURIComponent(h.id)}`,icon:'code'}));
+ agents.things=hs.map(h => ({id:h.id,name:h.name,maker:h.provider,url:`https://openvibe.codes/harnesses#${encodeURIComponent(h.id)}`,icon:'code'}));
  agents.criteria=[];
  const seen=new Set();
  for(const r of [...(feeds.runs?.runs || []),...(feeds.tickets?.runs || [])].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))) {
