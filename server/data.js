@@ -3,6 +3,7 @@ const ENDPOINTS = {
  market: 'https://api.openvibe.exchange/api/v1/exchange/market',
  quality: 'https://bench.openvibe.services/api/v1/boards/chat.arena',
  runs: 'https://bench.openvibe.services/api/v1/runs?kind=codes.patch&limit=100',
+ tickets: 'https://bench.openvibe.services/api/v1/runs?kind=codes.ticket&limit=100',
  harnesses: 'https://openvibe.codes/api/v1/harnesses',
  plans: 'https://billing.openvibe.network/api/v1/plans',
 };
@@ -42,7 +43,7 @@ function build(feeds, at) {
  agents.things=hs.map(h => ({id:h.id,name:h.name,maker:h.provider,url:`https://openvibe.codes/harnesses/${encodeURIComponent(h.id)}`,icon:'code'}));
  agents.criteria=[];
  const seen=new Set();
- for(const r of feeds.runs?.runs || []) {
+ for(const r of [...(feeds.runs?.runs || []),...(feeds.tickets?.runs || [])].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)))) {
    const id=r.harness?.id || r.harness?.name;
    if(r.provenance !== 'verified' || !agents.things.some(t=>t.id===id) || !r.benchmark || !date(r.created_at)) continue;
    const key=`score:${r.benchmark}:${r.model?.id || r.model}`;
@@ -52,7 +53,7 @@ function build(feeds, at) {
    result(agents,id,key,typeof r.score==='number'?r.score:r.score?.value,r.created_at,`Bench verified run; ${id} ${r.harness?.version || 'version unspecified'}`,`https://bench.openvibe.services/api/v1/runs/${encodeURIComponent(r.id)}`);
  }
  if(!agents.criteria.length) agents.criteria=[criterion('verified-score','Verified benchmark score','score','higher',1,'Quality')];
- agents.method += ' Only verified public codes.patch runs are eligible. Benchmark version and model form separate criteria; newest verified run per harness and cohort is shown, with the harness version in its source label. Harness configuration prices are not product prices and are not used.';
+ agents.method += ' Only the latest hundred public runs from each of codes.patch and codes.ticket are read; only verified runs are eligible. Benchmark version and model form separate criteria; newest verified run per harness and cohort is shown, with the harness version in its source label. Harness configuration prices are not product prices and are not used.';
  const plans=base('openvibe-plans','OpenVibe plans','openvibe.plans','Published Billing offers. Packages and memberships have separate units and are not ranked together.',at);
  plans.criteria=[criterion('package-price','Package price','USD / purchase','lower',1,'Packages'),criterion('vibes','Package Vibes','Vibes / purchase','higher',1,'Packages'),criterion('membership-price','Membership price','USD / period','lower',0,'Membership'),criterion('period','Membership period','days','higher',0,'Membership')];
  for(const p of feeds.plans?.plans || []) {
@@ -61,7 +62,7 @@ function build(feeds, at) {
    if(p.kind==='package') { result(plans,p.id,'package-price',p.price_cents/100,p.as_of,label,ENDPOINTS.plans); result(plans,p.id,'vibes',p.vibes,p.as_of,label,ENDPOINTS.plans); }
    if(p.kind==='membership') {result(plans,p.id,'membership-price',p.price_cents/100,p.as_of,label,ENDPOINTS.plans);result(plans,p.id,'period',p.period_days,p.as_of,label,ENDPOINTS.plans);}
  }
- for(const [c,names] of [[models,['market','quality']],[agents,['runs','harnesses']],[plans,['plans']]]) {
+ for(const [c,names] of [[models,['market','quality']],[agents,['runs','tickets','harnesses']],[plans,['plans']]]) {
    c.sources=names.map(n=>({label:n,url:ENDPOINTS[n]}));
    c.availability=names.filter(n=>!feeds[n]).map(n=>`${n} is unavailable; no values have been filled in.`);
    c.updated_at=c.results.length ? c.results.map(r=>r.as_of).sort().at(-1) : at;

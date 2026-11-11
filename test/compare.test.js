@@ -19,7 +19,7 @@ test('rank handles direction, equal values, missing evidence, zero and invalid w
 });
 test('cache coalesces requests, lasts ten minutes, and expires without fabricating unavailable data',async()=>{
  let calls=0,now=0;const get=createData({now:()=>now,fetchImpl:async url=>{calls++;return {ok:true,json:async()=>fixture[Object.entries(ENDPOINTS).find(([,v])=>v===url)[0]]};}});
- await Promise.all([get(),get()]);assert.equal(calls,5);now=599999;await get();assert.equal(calls,5);now=600001;await get();assert.equal(calls,10);
+ await Promise.all([get(),get()]);assert.equal(calls,Object.keys(ENDPOINTS).length);now=599999;await get();assert.equal(calls,Object.keys(ENDPOINTS).length);now=600001;await get();assert.equal(calls,2*Object.keys(ENDPOINTS).length);
  const fail=createData({fetchImpl:async()=>{throw Error('offline');}});assert((await fail()).every(c=>c.results.length===0&&c.availability.length));
 });
 test('API, phone/table markup, URL weights, Markdown, Dataset, discovery and CORS',async()=>{
