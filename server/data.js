@@ -27,7 +27,7 @@ function build(feeds, at) {
    if(!prior || o.price.in+o.price.out < prior.price.in+prior.price.out) offers.set(o.model,o);
  }
  for(const [id,o] of offers) {
-   models.things.push({id,name:o.name || id,maker:o.maker || id.split('/')[0],url:`https://openvibe.exchange/models/${id}`,icon:'model'});
+   models.things.push({id,name:o.name || id,maker:o.maker || id.split('/')[0],url:o.price_source,icon:'model'});
    result(models,id,'input',o.price.in,o.price_checked_at,`${o.provider_name} price book`,o.price_source);
    result(models,id,'output',o.price.out,o.price_checked_at,`${o.provider_name} price book`,o.price_source);
    // Exact identity only: fuzzy joins can silently compare a different model revision.

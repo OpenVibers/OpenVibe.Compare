@@ -7,6 +7,7 @@ const fixture={market:{offers:[1,2,3].map(n=>({model:`maker/m${n}`,name:`Model $
 const data=build(fixture,at);
 test('every measurement is finite, dated, sourced and references a known thing and criterion',()=>{
  for(const c of data)for(const r of c.results){assert(Number.isFinite(r.value));assert(Number.isFinite(Date.parse(r.as_of)));assert.match(r.source.url,/^https:/);assert(r.source.label);assert(c.things.some(t=>t.id===r.thing));assert(c.criteria.some(k=>k.id===r.criterion));}
+ assert.equal(data[0].things[0].url,'https://example.com/prices');assert.equal(data[1].things[0].url,'https://openvibe.codes/harnesses#codex');
  const bad=structuredClone(fixture);bad.market.offers[0].price_checked_at=null;bad.market.offers[1].price.out=null;assert.equal(build(bad,at)[0].things.length,1);
 });
 test('rank handles direction, equal values, missing evidence, zero and invalid weights',()=>{
