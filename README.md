@@ -10,5 +10,5 @@ Pages: `/`, `/comparisons/:slug`, `/things/:id` (URI-encoded identity), and `/co
 Launch: Host register-compare.py registers port 5280 with a lifecycle override until the separate Contracts manifest is released. Use merge-deploy.sh, then ov-vhost-install for deploy/nginx/openvibe.compare.conf. No database or service credentials are required.
 
 <!-- versions:start -->
-- openvibe-shared: v4.223.0
+- openvibe-shared: v4.223.1
 <!-- versions:end -->
