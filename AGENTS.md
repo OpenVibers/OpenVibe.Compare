@@ -3,9 +3,10 @@
 ## Project overview
 
 Public, source-linked comparisons for the OpenVibe network: AI models (price and measured Bench
-quality/speed), AI coding agents (Codes harnesses plus verified Bench runs) and OpenVibe plans
-(Billing's public plan list). Node.js/Express, fed entirely by other services' public APIs, **no
-database, no accounts, no write API**. Server-rendered pages; `openvibe-shared` for the shell.
+quality/speed), AI coding agents (Codes harnesses plus verified Bench runs), OpenVibe plans
+(Billing's public plan list) and compute prices (Exchange's reviewed GPU/computer tariffs).
+Node.js/Express, fed entirely by other services' public APIs, **no database, no accounts, no write
+API**. Server-rendered pages; `openvibe-shared` for the shell.
 
 - Origin `https://openvibe.compare`, port `5280`, unit `openvibe-compare.service`.
 - One rule above all: **missing evidence is not zero**. A thing without a measurement is unranked,
@@ -17,8 +18,9 @@ database, no accounts, no write API**. Server-rendered pages; `openvibe-shared` 
 - `GET /comparisons/:slug` — one comparison; weight overrides via `?w.<criterion>=`.
 - `GET /things/:id` — one thing across every comparison that contains it; `/models/:org/:model`
   301s here.
-- `GET /api/v1/comparisons[/:slug]` — the same data as JSON, CORS-allowed for the origins in
-  [server/origins.json](server/origins.json).
+- `GET /compute` — compute prices from Exchange: filters, sorts and a two/three-offer side-by-side.
+- `GET /api/v1/comparisons[/:slug]` and `GET /api/v1/compute` — the same data as JSON, CORS-allowed
+  for the origins in [server/origins.json](server/origins.json).
 - `robots.txt`, `sitemap.xml`, `llms.txt`, Dataset JSON-LD, and `Accept: text/markdown` negotiation —
   all generated from the same data, never hand-written separately.
 
@@ -27,7 +29,8 @@ schema with no API in v1).
 
 ## Who it reads
 
-Five public endpoints, all in [server/data.js](server/data.js) `ENDPOINTS`:
+Six public endpoints: five in [server/data.js](server/data.js) `ENDPOINTS`, and compute in
+[server/compute.js](server/compute.js) `SOURCE`:
 
 | Feed | What |
 |---|---|
@@ -36,6 +39,7 @@ Five public endpoints, all in [server/data.js](server/data.js) `ENDPOINTS`:
 | `bench.openvibe.services/api/v1/runs?kind=codes.patch` / `codes.ticket` | verified Bench runs (OpenVibe.Bench) |
 | `openvibe.codes/api/v1/harnesses` | coding harness catalog (OpenVibe.Codes) |
 | `billing.openvibe.network/api/v1/plans` | published plans (OpenVibe.Billing) |
+| `openvibe.exchange/api/compute/prices` | reviewed compute tariffs per provider and region (OpenVibe.Exchange) |
 
 It does not call AI, Live, Network or any authenticated API. Nothing here writes anywhere.
 
@@ -46,6 +50,9 @@ It does not call AI, Live, Network or any authenticated API. Nothing here writes
   health/ready, `/release.json`, `/api/v1`, pages, 404 and 503.
 - **Data:** [server/data.js](server/data.js) — fetches the five feeds (8 s timeout), builds the three
   comparisons, coalesces concurrent reads and caches for ten minutes; a failed feed becomes `null`.
+- **Compute:** [server/compute.js](server/compute.js) normalizes Exchange's tariffs and derives the
+  month (730 h) and GPU GB-hour prices; [server/compute-views.js](server/compute-views.js) renders the
+  page, Markdown and Dataset JSON-LD. A failed feed is not cached.
 - **Views:** [server/views.js](server/views.js) — HTML, markdown, escaping, JSON-LD, the method text.
 - **Ranking:** [public/rank.js](public/rank.js) — the one ranking implementation, required by both the
   server views and the browser.
@@ -68,11 +75,11 @@ There is no `dev` script and no build step: edit `server/` or `public/` and rest
 
 ## Testing
 
-`test/compare.test.js` uses Node's built-in test runner with fixture feeds. It pins the rules that
+`test/compare.test.js` and `test/compute.test.js` use Node's built-in test runner with fixture feeds. It pins the rules that
 matter: every measurement is finite, dated, sourced, and references a known thing and criterion;
 missing evidence stays missing; exact model identity only; ranking handles direction, equal values,
 zero/invalid weights and all-zero weights (unranked); pages and JSON agree. `ov test` runs the same
-file plus the repository checks the harness adds.
+file and `test/compute.test.js` plus the repository checks the harness adds.
 
 ## Conventions
 
@@ -110,14 +117,16 @@ vhost and unit in sync with [deploy/](deploy/); a docs-only change needs no depl
 - **Do not invent a write path.** Builder and version history are deliberately absent from v1.
 - **Do not cache a failed feed into an old value.** It is `null` for that read; the next request
   retries, and the comparison lists it as unavailable.
-- **Do not hand-write `sitemap.xml`, `llms.txt` or JSON-LD.** They are generated from `getData()` so
-  they cannot drift from the pages.
+- **Do not hand-write `sitemap.xml`, `llms.txt` or JSON-LD.** They are generated from `getData()` and
+  `getCompute()` so they cannot drift from the pages.
+- **Compute is read from Exchange, never copied.** A tariff's checked date and review date are shown
+  as published; an offer past `expires_at` is marked, never presented as current.
 - **Keep `public/rank.js` framework-free and dual-use** (server `require` and browser global); the
   test loads it both ways.
 - **CORS is an exact allow-list** ([server/origins.json](server/origins.json)); no `*` and no
   credentials.
-- **`Accept: text/markdown`** on `/`, `/comparisons/:slug` and `/things/:id` is part of the product;
-  keep it when touching the views.
+- **`Accept: text/markdown`** on `/`, `/comparisons/:slug`, `/things/:id` and `/compute` is part of
+  the product; keep it when touching the views.
 - **Do not remove the 503 handler**: an unexpected feed failure must answer explicitly, not 500.
 
 ## Documentation

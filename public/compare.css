@@ -17,3 +17,43 @@ main a,main summary{overflow-wrap:anywhere}
 /* Shared's 34px sign-in link has an 8px expanded hit area. At the phone's
    6px outer gutter it overruns the viewport by 2px; keep a 48px tap area. */
 @media(max-width:799px){#navbar-mount .openvibe-navbar .openvibe-navbar-login::after{right:-6px}}
+/* Compute prices: cards on a phone, a table from 900 px, and a side-by-side that scrolls inside its box. */
+.compute-source{margin:1rem 0;overflow-wrap:anywhere}
+.compute-filters fieldset{border:1px solid currentColor;border-radius:.5rem;padding:0 1rem 1rem}
+.compute-filters .ovk-set-row{border-top:0;padding:.35rem 0;flex-wrap:wrap;gap:.5rem}
+.compute-filters select{max-width:100%}
+.compute-filters .compute-submit{margin:.75rem 0 0}
+.compute-sort{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;margin:1rem 0}
+.compute-sort a[aria-current]{font-weight:700;text-decoration:none}
+.compute-count{overflow-wrap:anywhere}
+.compute-picked{overflow-wrap:anywhere}
+.compute-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:1rem}
+.compute-card{display:flex;flex-direction:column}
+.compute-card h2{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;margin:0 0 .5rem;overflow-wrap:anywhere}
+.compute-kind{font-weight:400;opacity:.8}
+.compute-price{margin:.25rem 0 .75rem}
+.compute-price b{font-size:1.6rem}
+.compute-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem;margin:.5rem 0}
+.compute-facts>div{min-width:0}
+.compute-facts dt{font-size:.8rem;opacity:.8}
+.compute-facts dd{margin:.1rem 0 0;overflow-wrap:anywhere}
+.compute-promo,.compute-overdue{margin:.5rem 0;overflow-wrap:anywhere}
+.compute-promo{font-size:.9rem}
+.compute-links{display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin:.75rem 0 0}
+.compute-use{margin-top:auto;padding-top:.5rem}
+.compute-use-links{display:inline;overflow-wrap:anywhere}
+.compute-table{display:none;max-width:100%;overflow:auto}
+.compute-table table,.compute-side table{width:100%;border-collapse:collapse}
+.compute-table th,.compute-table td,.compute-side th,.compute-side td{padding:.5rem;border-bottom:1px solid currentColor;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.compute-table caption,.compute-side caption{text-align:left;padding:.5rem 0}
+.compute-side{margin-top:2rem;max-width:100%}
+.compute-side-scroll{max-width:100%;overflow-x:auto}
+.compute-side table{min-width:0;table-layout:fixed}
+.compute-side thead th:first-child{width:28%}
+.compute-side th,.compute-side td{font-size:.9rem}
+.compute-num{white-space:nowrap;font-variant-numeric:tabular-nums}
+.compute-side thead a{font-size:.85rem}
+.compute-empty{padding:1rem 0}
+.compute-filters .ovk-set-text{min-width:0}
+@media(min-width:900px){.compute-cards{display:none}.compute-table{display:block}}
+@media(max-width:899px){.compute-table{display:none}}
