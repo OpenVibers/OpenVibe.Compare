@@ -29,7 +29,7 @@ schema with no API in v1).
 
 ## Who it reads
 
-Six public endpoints: five in [server/data.js](server/data.js) `ENDPOINTS`, and compute in
+Six feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute book in
 [server/compute.js](server/compute.js) `SOURCE`:
 
 | Feed | What |
