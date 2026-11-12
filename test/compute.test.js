@@ -33,6 +33,7 @@ test('compute prices are normalized, derived from Exchange fields, and invalid r
     assert.equal(compute.offers[0].id, 'fly-iad-2x2');
     const pre = compute.offers.find((o) => o.id === 'daytona-4090-preemptible');
     assert.equal(pre.cheapest, true);
+    assert.equal(pre.currency, 'USD');
     assert.equal(pre.hourly, .57);
     assert.equal(pre.monthly_24_7, Math.round(.57 * MONTH_HOURS * 10000) / 10000);
     assert.equal(pre.hourly_per_gpu_gb, Math.round(.57 / 24 * 10000) / 10000);
@@ -141,6 +142,7 @@ test('API, page, phone/table markup, filters, Markdown, discovery and CORS', asy
         assert.equal(body.source, 'OpenVibe.Exchange');
         assert.equal(body.source_url, SOURCE);
         assert.equal(body.offers.length, 6);
+        assert.equal(body.offers[0].currency, 'USD');
         assert.equal(body.cheapest.gpu, 'daytona-4090-preemptible');
         assert.equal(body.month_hours, MONTH_HOURS);
         r = await fetch(base + '/api/v1/compute', { headers: { Origin: 'https://evil.example' } });
