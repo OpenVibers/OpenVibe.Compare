@@ -4,7 +4,6 @@ const kit = require('openvibe-shared/kit');
 const { PAGE, MONTH_HOURS, select, href, label } = require('./compute');
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const json = (v) => JSON.stringify(v).replace(/</g, '\\u003c');
 const day = (iso) => (iso ? iso.slice(0, 10) : '—');
 const month = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
 const money = (v) => {

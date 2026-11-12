@@ -34,6 +34,7 @@ function offer(p, now) {
         provider: text(p.provider) || 'unknown',
         region: text(p.region) || null,
         kind,
+        currency: text(p.currency) || 'USD',
         cpu: nonNegative(p.cpu),
         ram_mb: positive(p.ram_mb),
         gpu: kind === 'gpu' ? text(p.gpu) || 'GPU' : null,
