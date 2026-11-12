@@ -2,9 +2,11 @@
 const express=require('express');
 const path=require('node:path');
 const {createData}=require('./data');
+const {createCompute,api:computeApi}=require('./compute');
+const computeViews=require('./compute-views');
 const v=require('./views');
 const origins=new Set(require('./origins.json')); 
-function createApp({getData=createData()}={}) {
+function createApp({getData=createData(),getCompute=createCompute()}={}) {
  const app=express();app.disable('x-powered-by');
  app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','strict-origin-when-cross-origin');next();});
  app.use(express.static(path.join(__dirname,'../public')));
@@ -19,20 +21,22 @@ function createApp({getData=createData()}={}) {
    res.vary('Origin');res.set('Access-Control-Allow-Methods','GET, HEAD, OPTIONS');
    if(req.method==='OPTIONS')return res.sendStatus(204);next();
  });
+ app.get('/api/v1/compute',wrap(async(req,res)=>res.json(computeApi(await getCompute()))));
  app.get('/api/v1/comparisons',wrap(async(req,res)=>res.json({comparisons:await getData()})));
  app.get('/api/v1/comparisons/:slug',wrap(async(req,res)=>{const c=(await getData()).find(c=>c.slug===req.params.slug);return c?res.json(c):res.status(404).json({error:'comparison.not_found'});}));
  app.get('/robots.txt',(_q,r)=>r.type('text').send('User-agent: *\nAllow: /\nSitemap: https://openvibe.compare/sitemap.xml\n'));
- app.get('/llms.txt',wrap(async(_q,r)=>r.type('text').send('# OpenVibe.Compare\n\nDated comparisons. Missing evidence is not zero.\n\n'+(await getData()).map(c=>`- [${c.title}](https://openvibe.compare/comparisons/${c.slug}): ${c.summary}`).join('\n')+'\n\nJSON: https://openvibe.compare/api/v1/comparisons\nEach page also accepts Accept: text/markdown.\n')));
+ app.get('/llms.txt',wrap(async(_q,r)=>{const [cs,compute]=await Promise.all([getData(),getCompute()]);return r.type('text').send('# OpenVibe.Compare\n\nDated comparisons. Missing evidence is not zero.\n\n'+`- [Compute prices](https://openvibe.compare/compute): GPUs and computers from OpenVibe.Exchange, per hour, per GPU GB-hour and per month at 24/7${compute.checked_at?`; checked ${compute.checked_at.slice(0,10)}`:''}.\n`+cs.map(c=>`- [${c.title}](https://openvibe.compare/comparisons/${c.slug}): ${c.summary}`).join('\n')+'\n\nJSON: https://openvibe.compare/api/v1/comparisons\nCompute JSON: https://openvibe.compare/api/v1/compute\nEach page also accepts Accept: text/markdown.\n')}));
  app.get('/sitemap.xml',wrap(async(_q,r)=>{
-   const cs=await getData();const paths=new Map([['/',cs.map(c=>c.updated_at).sort().at(-1)]]);
+   const [cs,compute]=await Promise.all([getData(),getCompute()]);const newest=cs.map(c=>c.updated_at).sort().at(-1);const paths=new Map([['/',newest],['/compute',compute.checked_at||newest]]);
    for(const c of cs){paths.set(`/comparisons/${c.slug}`,c.updated_at);for(const t of c.things)paths.set(v.thingPath(t.id),c.updated_at);}
    r.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+[...paths].map(([p,d])=>`<url><loc>https://openvibe.compare${v.esc(p)}</loc><lastmod>${v.esc(d)}</lastmod></url>`).join('')+'</urlset>');
  }));
  app.get('/',wrap(async(req,res)=>{
-   const all=await getData();res.vary('Accept');
-   if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send('# Compare anything\n\n'+all.map(c=>`- [${c.title}](/comparisons/${c.slug}): ${c.summary}`).join('\n'));
-   res.send(v.page('Compare anything',v.home(all,String(req.query.q||'').slice(0,120),String(req.query.task||'balanced'),String(req.query.budget||'').slice(0,20))));
+   const [all,compute]=await Promise.all([getData(),getCompute()]);res.vary('Accept');
+   if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send('# Compare anything\n\n- [Compute prices](/compute): GPUs and computers from OpenVibe.Exchange, per hour, per GPU GB-hour and per month.\n'+all.map(c=>`- [${c.title}](/comparisons/${c.slug}): ${c.summary}`).join('\n'));
+   res.send(v.page('Compare anything',v.home(all,compute,String(req.query.q||'').slice(0,120),String(req.query.task||'balanced'),String(req.query.budget||'').slice(0,20))));
  }));
+ app.get('/compute',wrap(async(req,res)=>{const compute=await getCompute();res.vary('Accept');if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(computeViews.markdown(compute,req.query));res.send(v.page('Compute prices',computeViews.body(compute,req.query),'/compute',[computeViews.jsonLd(compute)]));}));
  app.get('/comparisons/:slug',wrap(async(req,res)=>{
    const c=(await getData()).find(c=>c.slug===req.params.slug);if(!c)return res.sendStatus(404);res.vary('Accept');
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(v.markdown(c));
