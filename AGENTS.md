@@ -72,7 +72,7 @@ It does not call AI, Live, Network or any authenticated API. Nothing here writes
 - **Views:** [server/views.js](server/views.js) — HTML, markdown, escaping, JSON-LD, the method text.
 - **Ranking:** [public/rank.js](public/rank.js) — the one ranking implementation, required by both the
   server views and the browser.
-- **Browser:** [public/comparison.js](public/comparison.js), [public/compare-account.js](public/compare-account.js),
+- **Browser:** [public/comparison.js](public/comparison.js), (sign-in is Compare's own since 11-13: `/auth/*` through openvibe-sdk/sso, the `compare` client; env OV_OAUTH_CLIENT_ID, OV_OAUTH_CLIENT_SECRET, OV_PUBLIC_URL),
   [public/ai-factors.js](public/ai-factors.js) (an agent pair's gap split, drawn with `OVMetrics.split`),
   [public/compare.css](public/compare.css).
 - **Deploy:** [deploy/systemd/openvibe-compare.service](deploy/systemd/openvibe-compare.service),

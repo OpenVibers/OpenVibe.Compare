@@ -163,3 +163,20 @@ test('a Bench read past its minute serves the last answer at once and refreshes 
  await bench.kinds();assert.equal(calls,2,'one refresh per key at a time');
  now=200_000;const c=await bench.kinds();assert.equal(c.stale,true,'older than two minutes reads as stale');
 });
+
+test('Compare signs people in through OpenVibe.Network: /auth/login sends the browser to the compare client',async()=>{
+ const {createApp}=require('../server/app');
+ const app=createApp({getData:async()=>[],getCompute:async()=>({}),ai:{comparison:async()=>({rows:[],tasks:[],updated_at:null})}});
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+ try{
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const r=await fetch(base+'/auth/login?next=/ai',{redirect:'manual'});
+  assert.ok(r.status>=300&&r.status<400,`a redirect, got ${r.status}`);
+  const to=new URL(r.headers.get('location'));
+  assert.equal(to.origin,'https://openvibe.network');
+  assert.equal(to.searchParams.get('client_id'),'compare');
+  assert.equal(to.searchParams.get('redirect_uri'),'https://openvibe.compare/auth/callback');
+  const me=await fetch(base+'/auth/me');
+  assert.ok([200,401].includes(me.status),`signed out, /auth/me answers: ${me.status}`);
+ }finally{await new Promise(r=>server.close(r));}
+});

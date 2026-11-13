@@ -8,13 +8,25 @@ const {createAi}=require('./ai-data');
 const aiViews=require('./ai-views');
 const v=require('./views');
 const origins=new Set(require('./origins.json'));
-function createApp({getData=createData(),getCompute=createCompute(),ai=createAi()}={}) {
+const {createSsoClient}=require('openvibe-sdk/sso');
+const PUBLIC_URL=String(process.env.OV_PUBLIC_URL||'https://openvibe.compare').replace(/\/+$/,'');
+// Sign-in (plan 16a, 11-13): Compare's own, through OpenVibe.Network (openvibe-sdk/sso, the `compare` client). Votes,
+// "for your task" and the Arena move here next; until then a signed-in person is only shown as such.
+function defaultSso(){
+ return createSsoClient({site:'compare',baseUrl:PUBLIC_URL,clientId:process.env.OV_OAUTH_CLIENT_ID||'compare',clientSecret:process.env.OV_OAUTH_CLIENT_SECRET||'',
+   networkUrl:process.env.OV_NETWORK_PUBLIC_URL||'https://openvibe.network',networkInternalUrl:process.env.OV_NETWORK_INTERNAL_URL||undefined,secureCookies:/^https:/.test(PUBLIC_URL)});
+}
+function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(),sso=null}={}) {
  const app=express();app.disable('x-powered-by');
  app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','strict-origin-when-cross-origin');next();});
  app.use(express.static(path.join(__dirname,'../public')));
  app.use('/shared',require('openvibe-shared/serve').handler());
  app.get('/api/health',(_q,r)=>r.json({status:'ok',service:'compare'}));
  app.get('/api/ready',(_q,r)=>r.json({status:'ok',service:'compare'}));
+ // /auth/login, /callback, /fedcm, /logout, /me, /refresh; req.user on every later route.
+ const auth=sso||defaultSso();
+ app.use('/auth',auth.router(express));
+ app.use(auth.optionalAuth());
  app.get('/release.json',(_q,r)=>r.json(require('openvibe-shared/release').createRelease({service:'compare',root:path.join(__dirname,'..')})));
  const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  app.use('/api/v1',(req,res,next)=>{
