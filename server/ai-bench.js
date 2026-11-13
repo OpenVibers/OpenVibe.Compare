@@ -70,11 +70,31 @@ function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = co
         while (store.size > cap) store.delete(store.keys().next().value);
     }
 
+    // One refresh per key at a time (11-13): stale while revalidating.
+    const refreshing = new Map();
+
     async function read(store, key, path, label, cap, loader = null) {
         const atMs = clock();
         const hit = store.get(key);
         if (hit && hit.atMs + TTL_MS > atMs) return { data: hit.data, at: hit.at, stale: false };
         if (hit && hit.retryAtMs > atMs) return { data: hit.data, at: hit.at, stale: true };
+        if (hit) {
+            // Past its minute, the last good answer serves at once and a fresh one is fetched behind it, so a visitor
+            // never waits on Bench's timeout (a page took 11 s when a board read was aborted). It reads as stale only once
+            // it is older than two minutes.
+            if (!refreshing.has(key)) {
+                refreshing.set(key, fetchInto(store, key, path, label, cap, loader, hit).catch(() => null).finally(() => refreshing.delete(key)));
+            }
+            return { data: hit.data, at: hit.at, stale: atMs - hit.atMs > 2 * TTL_MS };
+        }
+        if (refreshing.has(key)) return refreshing.get(key);
+        const first = fetchInto(store, key, path, label, cap, loader, null).finally(() => refreshing.delete(key));
+        refreshing.set(key, first);
+        return first;
+    }
+
+    async function fetchInto(store, key, path, label, cap, loader, hit) {
+        const atMs = clock();
         let data = null;
         if (loader) {
             try { data = await loader(); }

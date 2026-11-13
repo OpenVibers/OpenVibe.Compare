@@ -143,3 +143,23 @@ test('the public AI pages link to Bench\'s owner page, so a person finds their o
   }
  }finally{await new Promise(r=>server.close(r));}
 });
+
+test('past ten minutes the last good build answers at once while the feeds refresh behind it',async()=>{
+ let now=0,hang=false,calls=0;const n=Object.keys(ENDPOINTS).length;
+ const get=createData({now:()=>now,fetchImpl:async url=>{calls++;if(hang) return new Promise(()=>{});return {ok:true,json:async()=>fixture[Object.entries(ENDPOINTS).find(([,v])=>v===url)[0]]};}});
+ const first=await get();now=600001;hang=true;
+ const t0=Date.now();const again=await get();assert.equal(again,first);assert.ok(Date.now()-t0<50);assert.equal(calls,2*n);
+ assert.equal(await get(),first);assert.equal(calls,2*n,'one refresh at a time');
+});
+
+test('a Bench read past its minute serves the last answer at once and refreshes once behind it',async()=>{
+ const {createBenchClient}=require('../server/ai-bench');
+ let now=0,calls=0,hang=false;
+ const fetchImpl=async()=>{calls++;if(hang) return new Promise(()=>{});return {ok:true,status:200,headers:{get:()=>'application/json'},json:async()=>({kinds:[{id:'codes.patch'}]}),text:async()=>JSON.stringify({kinds:[{id:'codes.patch'}]})};};
+ const bench=createBenchClient({fetchImpl,now:()=>now,log:{warn(){},info(){}}});
+ const a=await bench.kinds();assert.ok(a&&a.data);assert.equal(a.stale,false);assert.equal(calls,1);
+ now=61_000;hang=true;
+ const t0=Date.now();const b=await bench.kinds();assert.ok(Date.now()-t0<50);assert.deepEqual(b.data,a.data);assert.equal(b.stale,false);
+ await bench.kinds();assert.equal(calls,2,'one refresh per key at a time');
+ now=200_000;const c=await bench.kinds();assert.equal(c.stale,true,'older than two minutes reads as stale');
+});

@@ -103,7 +103,9 @@ function createData({fetchImpl=fetch,now=Date.now,ttl=600000}={}) {
  let cached, expires=0, pending;
  return async function get() {
    if(cached && now()<expires) return cached;
-   if(pending) return pending;
+   // Stale while revalidating (11-13): past the ten minutes, the last good build answers at once and the feeds refresh
+   // behind it. A visitor never waits on the upstream timeouts (a page took 11 s when Bench was slow to answer).
+   if(pending) return cached || pending;
    pending=(async()=>{
      const feeds={};
      await Promise.all(Object.entries(ENDPOINTS).map(async([key,url])=>{
@@ -111,6 +113,7 @@ function createData({fetchImpl=fetch,now=Date.now,ttl=600000}={}) {
      }));
      cached=build(feeds,new Date(now()).toISOString()); expires=now()+ttl; return cached;
    })().finally(()=>{pending=null;});
+   if(cached) { pending.catch(()=>{}); return cached; }
    return pending;
  };
 }
