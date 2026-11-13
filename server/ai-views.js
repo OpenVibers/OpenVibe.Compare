@@ -402,6 +402,7 @@ function msText(x) {
     return `${Math.round(n)} ms`;
 }
 const benchSpeedCell = (x) => value(x) == null ? '—' : `<span title="${esc(`${value(x)} ms from Bench`)}">${esc(msText(x))}</span>`;
+const benchShare = (x) => { const n = value(x); return n == null ? '—' : `${Math.round(n * 100)}%`; };
 const lastRunText = (x) => x ? `Last run ${dayTime(x)}` : 'No runs yet';
 const provenanceCell = (p) => p === 'verified' ? '<span class="ai-fine">verified</span>' : p === 'submitted' ? '<span class="ai-flag">submitted</span>' : '—';
 const byKindFromOverview = (overview) => {
@@ -498,7 +499,7 @@ function boardPage(data = {}) {
         content = paretoChart(points) + (points.length ? kit.table({ caption: 'The numbers', columns: [
             { key: 'm', label: 'Model', primary: true, html: true }, { key: 'q', label: 'Quality', num: true, html: true },
             { key: 'c', label: 'Cost per solved', num: true, html: true }, { key: 'speed', label: 'Speed/run', num: true, html: true },
-        ], rows: points.map((r) => ({ m: `${modelLink(r.subject)}${r.frontier ? ` ${kit.badge('frontier', 'accent')}` : ''}`, q: share(r.quality), c: usd(r.costPerSolved), speed: benchSpeedCell(r.median_ms) })) }) : '');
+        ], rows: points.map((r) => ({ m: `${modelLink(r.subject)}${r.frontier ? ` ${kit.badge('frontier', 'accent')}` : ''}`, q: benchShare(r.quality), c: usd(r.costPerSolved), speed: benchSpeedCell(r.median_ms) })) }) : '');
     } else if (tab === 'cost') {
         const crows = rowsOf(cost).length ? rowsOf(cost) : rows;
         content = kit.table({ caption: 'Cost per solved task', columns: [
@@ -519,7 +520,7 @@ function boardPage(data = {}) {
                 { key: 'm', label: 'Model', primary: true, html: true }, { key: 'q', label: 'Quality', num: true, html: true },
                 { key: 'games', label: 'Games', num: true, fmt: 'int' }, { key: 'won', label: 'Won', num: true, html: true },
                 { key: 'cost', label: 'Cost/run', num: true, html: true }, { key: 'speed', label: 'Speed/run', num: true, html: true },
-            ], rows: rows.map((r) => ({ m: modelLink(r.subject), q: `<span title="95% interval ${esc(`${r.ci_lower}–${r.ci_upper}`)}">${esc(r.elo == null ? '—' : Math.round(r.elo))}</span>`, games: r.games, won: share(r.win_rate), cost: moneyCell(r.median_cost_usd), speed: benchSpeedCell(r.median_ms) })) });
+            ], rows: rows.map((r) => ({ m: modelLink(r.subject), q: `<span title="95% interval ${esc(`${r.ci_lower}–${r.ci_upper}`)}">${esc(r.elo == null ? '—' : Math.round(r.elo))}</span>`, games: r.games, won: benchShare(r.win_rate), cost: moneyCell(r.median_cost_usd), speed: benchSpeedCell(r.median_ms) })) });
     }
     const lastRunTable = latestRows.length ? kit.table({
         caption: 'Latest runs of this kind', columns: [
@@ -621,6 +622,7 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
     const list = runs && runs.data && Array.isArray(runs.data.runs) ? runs.data.runs : [];
     const titles = new Map((overview && overview.data && Array.isArray(overview.data.list) ? overview.data.list : []).map((b) => [b.id, b.title]));
     const site = String(base || 'https://openvibe.compare').replace(/\/+$/, '');
+    const unavailable = runs && runs.data ? '' : ' OpenVibe.Bench did not answer; no runs are listed.';
     const items = list.map((r) => {
         const title = `${r.model} on ${titles.get(r.benchmark_id) || r.benchmark_id}`;
         const link = `${site}/ai/${encodeURIComponent(r.benchmark_id)}`;
@@ -632,7 +634,7 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
     }).join('');
     const newest = list.length ? Date.parse(list[0].created_at) : NaN;
     return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel><title>OpenVibe AI: new results</title><link>${xml(`${site}/ai`)}</link><description>Verified and submitted AI runs as OpenVibe.Bench publishes them.</description><language>en</language>${Number.isFinite(newest) ? `<lastBuildDate>${new Date(newest).toUTCString()}</lastBuildDate>` : ''}${items}</channel></rss>`;
+<rss version="2.0"><channel><title>OpenVibe AI: new results</title><link>${xml(`${site}/ai`)}</link><description>Verified and submitted AI runs as OpenVibe.Bench publishes them.${xml(unavailable)}</description><language>en</language>${Number.isFinite(newest) ? `<lastBuildDate>${new Date(newest).toUTCString()}</lastBuildDate>` : ''}${items}</channel></rss>`;
 }
 
 module.exports = {
