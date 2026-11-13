@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {build,createData,ENDPOINTS}=require('../server/data');
 const {rank}=require('../public/rank');
 const at='2026-11-10T00:00:00.000Z';
-const fixture={market:{offers:[1,2,3].map(n=>({model:`maker/m${n}`,name:`Model ${n}`,kind:'chat',price:{in:n,out:n*2,currency:'USD',per:'1M tokens'},price_source:'https://example.com/prices',price_checked_at:at}))},harnesses:{harnesses:[{id:'codex',name:'Codex',provider:'openai'}]},runs:{runs:[]},plans:{plans:[]},quality:{board:{rows:[]}}};
+const fixture={market:{offers:[1,2,3].map(n=>({model:`maker/m${n}`,provider_model:`m${n}`,name:`Model ${n}`,kind:'chat',price:{in:n,out:n*2,currency:'USD',per:'1M tokens'},price_source:'https://example.com/prices',price_checked_at:at}))},harnesses:{harnesses:[{id:'codex',name:'Codex',provider:'openai'}]},runs:{runs:[]},plans:{plans:[]},quality:{board:{rows:[]}}};
 const data=build(fixture,at);
 test('every measurement is finite, dated, sourced and references a known thing and criterion',()=>{
  for(const c of data)for(const r of c.results){assert(Number.isFinite(r.value));assert(Number.isFinite(Date.parse(r.as_of)));assert.match(r.source.url,/^https:/);assert(r.source.label);assert(c.things.some(t=>t.id===r.thing));assert(c.criteria.some(k=>k.id===r.criterion));}
@@ -40,4 +40,45 @@ test('upstream adapters preserve cohorts, observation dates and unknown quality'
  f.runs.runs=[{id:'run-a',benchmark:'patch@1',harness:{id:'codex',version:'1.2'},model:'model-a',score:70,created_at:at,provenance:'verified'},{id:'run-b',benchmark:'patch@1',harness:{id:'codex',version:'1.2'},model:'model-a',score:90,created_at:at,provenance:'submitted'}];
  f.plans.plans=[{id:'vibes-100',name:'100 Vibes',kind:'package',vibes:100,price_cents:150,as_of:at,url:'https://openvibe.network/vibes'},{id:'membership',name:'Membership',kind:'membership',price_cents:499,period_days:30,as_of:at,url:'https://openvibe.vip'}];
  const [models,agents,plans]=build(f,at);assert(!models.results.some(r=>r.criterion==='quality'));assert.equal(models.results.find(r=>r.criterion==='speed').value,12);assert.equal(agents.results.length,1);assert.equal(agents.results[0].value,70);assert.equal(agents.results[0].as_of,at);assert.match(agents.results[0].source.label,/1.2/);assert.equal(plans.results.find(r=>r.criterion==='package-price').value,1.5);assert.equal(plans.results.find(r=>r.criterion==='membership-price').value,4.99);
+});
+
+const measuredFeed={group:'model',range:{from:'2026-10-15',to:'2026-11-13'},rows:[
+ {group:'model',key:'m1',calls:30,success_rate:0.981,ttft_ms:{p50:240,p90:500,p95:800,n:30},tps:{p50:45.2,p90:70,p95:90,n:30}},
+ {group:'model',key:'m2',calls:19,success_rate:0.5,ttft_ms:{p50:100,p90:200,p95:300,n:19},tps:{p50:10,p90:20,p95:30,n:19}}
+]};
+test('measured AI columns come from Report public model rows with Shared words and a dash when absent',()=>{
+ const f=structuredClone(fixture);f.perf=measuredFeed;
+ const [models]=build(f,at);
+ const get=(id,k)=>models.results.find(r=>r.thing===id&&r.criterion===k);
+ assert.equal(get('maker/m1','ttft').value,240);assert.equal(get('maker/m1','tps').value,45.2);assert.equal(get('maker/m1','success').value,0.981);
+ assert.equal(get('maker/m1','ttft').source.url,ENDPOINTS.perf);assert.equal(get('maker/m1','ttft').as_of,'2026-11-13T00:00:00.000Z');assert.match(get('maker/m1','ttft').source.label,/30 calls in 30 days/);
+ assert.equal(get('maker/m2','ttft'),undefined,'19 calls is under the public floor');
+ assert.equal(models.results.filter(r=>r.criterion==='ttft').length,1);
+ assert.deepEqual(models.criteria.slice(0,5).map(c=>c.id),['input','output','ttft','tps','success']);
+ assert.deepEqual(models.criteria.slice(2,5).map(c=>c.format),['ms','tps','rate']);
+ const html=require('../server/views').comparison(models);
+ assert.match(html,/240 ms/);assert.match(html,/45\.2 tok\/s/);assert.match(html,/98\.1%/);
+ assert.match(html,/<td data-criterion="ttft"><span class="ovm-unknown">—<\/span><\/td>/);assert.match(html,/data-sort="ttft"/);
+ assert.match(html,/Measured on OpenVibe\.AI's real traffic; a model shows after 20 calls in 30 days/);
+ assert.match(html,/https:\/\/openvibe\.report\/ai\/speed/);
+ const md=require('../server/views').markdown(models);
+ assert.match(md,/- Time to first token p50: 240 ms — 2026-11-13/);assert.match(md,/- Time to first token p50: —/);
+});
+test('Report down leaves measured dashes and the page answers 200',async()=>{
+ const {createApp}=require('../server/app');
+ const down=createData({fetchImpl:async url=>{
+  if(url===ENDPOINTS.perf) throw Error('offline');
+  const key=Object.entries(ENDPOINTS).find(([,v])=>v===url)[0];
+  return {ok:true,json:async()=>fixture[key]};
+ }});
+ const server=createApp({getData:down}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+ const base=`http://127.0.0.1:${server.address().port}`;
+ try {
+  const r=await fetch(base+'/comparisons/ai-models');assert.equal(r.status,200);
+  const html=await r.text();
+  assert.match(html,/<td data-criterion="ttft"><span class="ovm-unknown">—<\/span><\/td>/);
+  assert.match(html,/<td data-criterion="tps"><span class="ovm-unknown">—<\/span><\/td>/);
+  assert.match(html,/<td data-criterion="success"><span class="ovm-unknown">—<\/span><\/td>/);
+  assert.match(html,/perf is unavailable; no values have been filled in/);
+ }finally{await new Promise(r=>server.close(r));}
 });

@@ -4,6 +4,7 @@
  const controls=[...document.querySelectorAll('[data-weight]')];
  const input=()=>Object.fromEntries(controls.map(el=>[el.dataset.weight,Number(el.value)]));
  const scoreText=n=>n===null?'Unranked':n.toFixed(1);
+ const words=(k,v)=>k&&k.format&&window.OVMetrics?window.OVMetrics.format[k.format](v):null;
  let ranked=CompareRank.rank(c,input());
  function order(ids){for(const id of ids)for(const parent of [document.getElementById('cards'),document.getElementById('rows')]){const el=[...parent.children].find(e=>e.dataset.thing===id);if(el)parent.append(el);}}
  function update(){
@@ -19,14 +20,14 @@
    const ids=c.things.map(t=>t.id).sort((a,b)=>{const x=value(a),y=value(b);if(x==null)return y==null?0:1;if(y==null)return -1;return descending?y-x:x-y;});order(ids);
    document.querySelectorAll('thead th').forEach(th=>th.removeAttribute('aria-sort'));b.closest('th').setAttribute('aria-sort',descending?'descending':'ascending');
  }));
- function evidence(r){const d=document.createElement('details'),s=document.createElement('summary'),a=document.createElement('a');s.textContent=String(r.value);a.href=r.source.url;a.textContent=r.source.label;d.append(s,document.createTextNode(`${r.as_of.slice(0,10)} · `),a);return d;}
+ function evidence(r,k){const d=document.createElement('details'),s=document.createElement('summary'),a=document.createElement('a');s.textContent=words(k,r.value)||String(r.value);a.href=r.source.url;a.textContent=r.source.label;d.append(s,document.createTextNode(`${r.as_of.slice(0,10)} · `),a);return d;}
  function chart(){
    const box=document.getElementById('chart');box.replaceChildren();const mode=document.getElementById('chart-mode').value;if(mode==='none')return;
    if(mode==='bars')for(const k of c.criteria){
      const h=document.createElement('h3');h.textContent=`${k.label} (${k.unit})`;box.append(h);
      const rs=c.results.filter(r=>r.criterion===k.id),max=Math.max(1,...rs.map(r=>Math.abs(r.value)));
      if(!rs.length){const p=document.createElement('p');p.textContent='Not measured';box.append(p);}
-     for(const r of rs){const div=document.createElement('div');div.className='chart-row';const meter=document.createElement('meter');meter.min=Math.min(0,...rs.map(r=>r.value));meter.max=max;meter.value=r.value;meter.setAttribute('aria-label',`${c.things.find(t=>t.id===r.thing).name}: ${r.value} ${k.unit}`);div.append(document.createTextNode(c.things.find(t=>t.id===r.thing).name+' '),meter,evidence(r));box.append(div);}
+     for(const r of rs){const div=document.createElement('div');div.className='chart-row';const meter=document.createElement('meter');meter.min=Math.min(0,...rs.map(r=>r.value));meter.max=max;meter.value=r.value;meter.setAttribute('aria-label',`${c.things.find(t=>t.id===r.thing).name}: ${words(k,r.value)||`${r.value} ${k.unit}`}`);div.append(document.createTextNode(c.things.find(t=>t.id===r.thing).name+' '),meter,evidence(r,k));box.append(div);}
    }
    if(mode==='scatter'){
      const points=c.things.map(t=>({t,x:c.results.find(r=>r.thing===t.id&&r.criterion==='output'),y:c.results.find(r=>r.thing===t.id&&r.criterion==='quality')})).filter(p=>p.x&&p.y);

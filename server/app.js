@@ -48,7 +48,7 @@ function createApp({getData=createData(),getCompute=createCompute()}={}) {
    const cs=(await getData()).filter(c=>c.things.some(t=>t.id===req.params.id));if(!cs.length)return res.sendStatus(404);
    const t=cs[0].things.find(t=>t.id===req.params.id);res.vary('Accept');
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(cs.map(c=>v.markdown({...c,things:[t]})).join('\n'));
-   res.send(v.page(t.name,`<h1>${v.esc(t.name)}</h1><p>${v.esc(t.maker)}</p><a href="${v.esc(t.url)}">Original listing</a>${cs.map(c=>`<h2><a href="/comparisons/${c.slug}">${v.esc(c.title)}</a></h2><dl>${c.criteria.map(k=>`<dt>${v.esc(k.label)} (${v.esc(k.unit)})</dt><dd>${v.number(c.results.find(r=>r.thing===t.id && r.criterion===k.id))}</dd>`).join('')}</dl><p>${v.esc(c.method)}</p>`).join('')}`,req.path));
+   res.send(v.page(t.name,`<h1>${v.esc(t.name)}</h1><p>${v.esc(t.maker)}</p><a href="${v.esc(t.url)}">Original listing</a>${cs.map(c=>`<h2><a href="/comparisons/${c.slug}">${v.esc(c.title)}</a></h2><dl>${c.criteria.map(k=>`<dt>${v.esc(k.label)} (${v.esc(k.unit)})</dt><dd>${v.number(c.results.find(r=>r.thing===t.id && r.criterion===k.id),k)}</dd>`).join('')}</dl><p>${v.esc(c.method)}</p>`).join('')}`,req.path));
  }));
  app.use((_q,r)=>r.status(404).send('Not found'));
  app.use((_e,_q,r,_n)=>r.status(503).json({error:'compare.unavailable'}));

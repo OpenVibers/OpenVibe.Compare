@@ -29,7 +29,7 @@ schema with no API in v1).
 
 ## Who it reads
 
-Six feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute book in
+Seven feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute book in
 [server/compute.js](server/compute.js) `SOURCE`:
 
 | Feed | What |
@@ -39,6 +39,7 @@ Six feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute book 
 | `bench.openvibe.services/api/v1/runs?kind=codes.patch` / `codes.ticket` | verified Bench runs (OpenVibe.Bench) |
 | `openvibe.codes/api/v1/harnesses` | coding harness catalog (OpenVibe.Codes) |
 | `billing.openvibe.network/api/v1/plans` | published plans (OpenVibe.Billing) |
+| `openvibe.report/api/v1/ai/performance?group=model&days=30` | measured AI time to first token, tokens per second and success rate, public model rows with a 20-call floor (OpenVibe.Report) |
 | `openvibe.exchange/api/compute/prices` | reviewed compute tariffs per provider and region (OpenVibe.Exchange) |
 
 It does not call AI, Live, Network or any authenticated API. Nothing here writes anywhere.
@@ -48,7 +49,7 @@ It does not call AI, Live, Network or any authenticated API. Nothing here writes
 - **Entry:** [server/index.js](server/index.js) — listens on `PORT || 5280`, graceful SIGTERM.
 - **App/routes:** [server/app.js](server/app.js) — security headers, static `public/`, `/shared`,
   health/ready, `/release.json`, `/api/v1`, pages, 404 and 503.
-- **Data:** [server/data.js](server/data.js) — fetches the five feeds (8 s timeout), builds the three
+- **Data:** [server/data.js](server/data.js) — fetches the seven feeds (8 s timeout; 3 s for Report), builds the three
   comparisons, coalesces concurrent reads and caches for ten minutes; a failed feed becomes `null`.
 - **Compute:** [server/compute.js](server/compute.js) normalizes Exchange's tariffs and derives the
   month (730 h) and GPU GB-hour prices; [server/compute-views.js](server/compute-views.js) renders the
@@ -98,6 +99,9 @@ file and `test/compute.test.js` plus the repository checks the harness adds.
   and observation dates are labelled; no price is estimated.
 - Arena quality: at least ten judged games and **exact** model identity (`r.model === id`); no fuzzy
   joins, because a fuzzy join silently compares a different model revision.
+- Measured AI columns: Report's public model rows over 30 days, matched by the full thing id or the
+  offer's provider model name. Report groups by model name across providers, so the values describe the
+  model, not one provider's serving; under 20 calls or a failed feed is a dash, never zero.
 - Coding agents: only `provenance === 'verified'` runs; benchmark version and model form separate
   criteria; newest verified run per harness/cohort.
 - Plans: packages and memberships have separate units and are never ranked together.
