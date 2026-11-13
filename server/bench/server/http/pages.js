@@ -1,0 +1,443 @@
+'use strict';
+
+/**
+ * Bench's server-rendered pages: a plain home and the API docs. Public boards are JSON only (Report renders their
+ * HTML later).
+ */
+const express = require('express');
+const seo = require('openvibe-shared/seo');
+const { asyncRouter } = require('./router');
+const { sameOrigin } = require('./same-origin');
+const { createDiscoveryRoutes, homeJsonLd } = require('./discovery');
+const { raw } = require('../render/html');
+const { send } = require('../render/layout');
+const views = require('../views');
+const results = require('../views/results');
+const { canViewBenchmark, parseSince } = require('../bench/registry');
+const { parsePrompts, definitionFor, TAG: PROMPT_TAG } = require('../bench/your-prompts');
+const { validateBenchmark } = require('../bench/validate');
+const { kindById } = require('../kinds');
+
+const PUBLIC_CACHE = 'public, max-age=60';
+
+/**
+ * One Dataset node per kind the home lists. The dataset is the JSONL the API already serves for that kind, so its url
+ * and its download are the endpoint itself; the description restates the kind's own room, judge and entry type.
+ * Bench states no licence for the data, so no licence is claimed here.
+ */
+function datasetJsonLd(k, base) {
+    const contentUrl = `${base}/api/v1/datasets/${encodeURIComponent(k.id)}.jsonl`;
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'Dataset',
+        name: k.name,
+        description: `${k.name}: a ${String(k.judge).replace(/_/g, ' ')} benchmark of ${String(k.entry).replace(/_/g, ' ')} entries from the ${k.room} room.`,
+        creator: { '@type': 'Organization', name: 'OpenVibe.Bench', url: base },
+        keywords: [k.id, k.room, k.judge, k.entry],
+        distribution: { '@type': 'DataDownload', contentUrl, encodingFormat: 'application/x-ndjson' },
+        url: contentUrl,
+    };
+}
+
+/**
+ * The page's JSON-LD in one script: every node in one @graph, so a page carries exactly one JSON-LD script.
+ * The nodes keep their own fields; only their own @context goes, because the graph carries it once.
+ */
+function oneGraph(nodes) {
+    const graph = nodes.filter(Boolean).map((n) => { const c = { ...n }; delete c['@context']; return c; });
+    return [{ '@context': 'https://schema.org', '@graph': graph }];
+}
+
+function createPageRoutes(ctx) {
+    const { config, bench, registry } = ctx;
+    const r = asyncRouter();
+    const base = () => String(config.baseUrl).replace(/\/+$/, '');
+    const page = (req, res, o, status = 200) => send(res, status, { viewer: req.viewer, config, path: req.originalUrl, ...o });
+
+    r.get('/', async (req, res) => {
+        const kinds = await bench.listKinds();
+        const benchmarks = await registry.listBenchmarks({ limit: 6 });
+        const counts = await registry.runCounts();
+        for (const b of benchmarks) b.runs = counts.get(b.id) || 0;
+        return page(req, res, {
+            index: true, cache: PUBLIC_CACHE,
+            title: null,
+            description: 'OpenVibe.Bench shows what AI models really make: the same tasks on every model, outputs live side by side, every run published with its cost and time, free and open.',
+            jsonLd: oneGraph([...homeJsonLd(config), ...kinds.map((k) => datasetJsonLd(k, base())), seo.jsonLd.organization()]),
+            body: raw(views.home({ kinds, counts: { kinds: kinds.length }, benchmarks })),
+        });
+    });
+
+    // ---- the results pages (B2) ----------------------------------------------------------------------------
+    const subjectOf = (req) => (req.viewer && req.viewer.kind === 'user' ? (req.viewer.subject || req.viewer.id || null) : null);
+    const notFound = (req, res, what) => page(req, res, { title: `No such ${what}`, body: raw(views.notFound()) }, 404);
+    const METRIC_IDS = results.METRICS.map((m) => m.id);
+
+    /** The benchmark a page may show, or null: a private one belongs to its owner, a shared unlisted one to its link. */
+    const readableBenchmark = async (req, ref) => {
+        const out = await registry.getDefinition(String(ref || ''), { reveal: false });
+        if (!out) return null;
+        if (canViewBenchmark(out.benchmark, { subject: subjectOf(req) })) return out;
+        // A benchmark shared with specific people: its row says private, the uniform share row names them.
+        const shared = ctx.sharing ? await ctx.sharing.canView({ subject: subjectOf(req) }, out.benchmark.id).catch(() => false) : false;
+        return shared ? out : null;
+    };
+
+    /** The public board of a kind: the first public benchmark with verified runs, else the first public one. */
+    const publicBoardForKind = async (kind, { excludeId = null } = {}) => {
+        const list = await registry.listBenchmarks({ kind: String(kind || ''), limit: 50 });
+        const publicList = list.filter((b) => b.visibility === 'public' && b.id !== excludeId);
+        for (const b of publicList) {
+            const rankings = await registry.rankings({ benchmark: b.id, metric: 'score' });
+            if (rankings && rankings.entries.length) return { benchmark: b, entries: rankings.entries };
+        }
+        return publicList.length ? { benchmark: publicList[0], entries: [] } : null;
+    };
+
+    /** One benchmark page, whether its owner, a public reader or someone following a share link is looking. */
+    const renderBenchmark = async (req, res, out, { share = null, shared = false, status = 200 } = {}) => {
+        const metric = METRIC_IDS.includes(String(req.query.metric)) ? String(req.query.metric) : 'score';
+        const id = out.benchmark.id;
+        const owner = subjectOf(req) != null && String(out.benchmark.owner) === String(subjectOf(req));
+        const since = parseSince(req.query.since);
+        const [rankings, runs, audienceRow] = await Promise.all([
+            registry.rankings({ benchmark: id, metric, since: since ? since.text : null }),
+            registry.listRuns({ benchmark: id, limit: 8 }),
+            // The column maps Specific people to private; the share row names the real audience for the page's cue.
+            ctx.sharing ? ctx.sharing.shareOf(id).catch(() => null) : Promise.resolve(null),
+        ]);
+        const allTime = since ? await registry.rankings({ benchmark: id, metric }) : null;
+        const isPublic = out.benchmark.visibility === 'public';
+        const isPromptBenchmark = Array.isArray(out.benchmark.tags) && out.benchmark.tags.includes(PROMPT_TAG);
+        const ownBoards = owner && isPromptBenchmark
+            ? {
+                ownEntries: (rankings && rankings.entries) || [],
+                ownRuns: ((rankings && rankings.entries) || []).reduce((n, e) => n + e.runs, 0),
+                publicBoard: await publicBoardForKind(out.benchmark.kind, { excludeId: out.benchmark.id }),
+                visibility: out.benchmark.visibility,
+            }
+            : null;
+        return page(req, res, {
+            index: isPublic && metric === 'score' && !shared, cache: isPublic && !shared ? PUBLIC_CACHE : null,
+            title: out.benchmark.title,
+            description: out.benchmark.description || `${out.benchmark.title}: rankings, value and every run.`,
+            jsonLd: isPublic && !shared
+                ? [seo.jsonLd.webPage({ name: out.benchmark.title, url: `${base()}/benchmarks/${encodeURIComponent(id)}`, description: out.benchmark.description || out.benchmark.title, siteUrl: base() })]
+                : [],
+            body: raw(String(results.benchmarkPage({
+                benchmark: out.benchmark, definition: out.definition, version: out.version && out.version.version,
+                rankings, metric, runs, codesRunUrl: config.codesRunUrl || null, viewer: req.viewer, baseUrl: base(),
+                ownBoards, share, shared, owner, since: rankings && rankings.since, allTimeEntries: allTime && allTime.entries,
+                audience: audienceRow ? audienceRow.audience : null,
+            }))),
+        }, status);
+    };
+
+    r.get('/benchmarks', async (req, res) => {
+        const q = String(req.query.q || '').slice(0, 80);
+        const family = String(req.query.kind || '').replace(/[^a-z0-9._-]/gi, '').slice(0, 40) || null;
+        const all = await registry.listBenchmarks({ q: q || null, limit: 200 });
+        const kinds = [...new Set(all.map((b) => b.kind).filter(Boolean))];
+        const list = family ? all.filter((b) => b.kind === family || String(b.kind).startsWith(`${family}.`)) : all;
+        const counts = await registry.runCounts();
+        const subject = subjectOf(req);
+        const mine = subject ? (await registry.listBenchmarks({ owner: subject, limit: 100 })).filter((b) => b.visibility !== 'public') : [];
+        for (const b of list) b.runs = counts.get(b.id) || 0;
+        for (const b of mine) b.runs = counts.get(b.id) || 0;
+        return page(req, res, {
+            index: !q && !family, cache: PUBLIC_CACHE,
+            title: 'Benchmarks',
+            description: 'Versioned AI benchmarks anyone can run again: tasks, judges and limits, with every run published.',
+            jsonLd: [seo.jsonLd.webPage({ name: 'Benchmarks', url: `${base()}/benchmarks`, description: 'Versioned AI benchmarks anyone can run again.', siteUrl: base() })],
+            body: raw(String(results.benchmarksIndex({ benchmarks: list, kinds, kind: family, q, mine, signedIn: Boolean(subject) }))),
+        });
+    });
+
+    // ---- a person's own prompts (B11) ---------------------------------------------------------------------
+    // The form is a plain form post, same-origin, and nothing here logs the prompts.
+    r.get('/benchmarks/new', async (req, res) => {
+        const kinds = await bench.listKinds();
+        const subject = subjectOf(req);
+        return page(req, res, {
+            index: false, title: 'Make your own benchmark',
+            description: 'Paste 5 to 50 of your own prompts as a private benchmark, then run them on 3 to 6 models.',
+            body: raw(String(results.newBenchmarkPage({
+                kinds,
+                values: { kind: String(req.query.kind || 'text.answer') },
+                signedIn: Boolean(subject),
+                loginUrl: `/auth/login?next=${encodeURIComponent('/benchmarks/new')}`,
+            }))),
+        });
+    });
+
+    r.post('/benchmarks/new', express.urlencoded({ extended: false, limit: '512kb' }), ctx.principal.middleware, async (req, res) => {
+        if (!sameOrigin(req, config)) return res.status(403).type('text').send('This form only works from Bench itself.');
+        const subject = subjectOf(req);
+        const kinds = await bench.listKinds();
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const values = {
+            title: String(b.title || '').slice(0, 160),
+            description: String(b.description || '').slice(0, 4000),
+            kind: String(b.kind || 'text.answer'),
+            format: String(b.format || 'auto'),
+            prompts: String(b.prompts || ''),
+        };
+        const fail = (status, error) => page(req, res, {
+            index: false, title: 'Make your own benchmark',
+            description: 'Paste 5 to 50 of your own prompts as a private benchmark.',
+            body: raw(String(results.newBenchmarkPage({ kinds, values, error, signedIn: Boolean(subject), loginUrl: `/auth/login?next=${encodeURIComponent('/benchmarks/new')}` }))),
+        }, status);
+        if (!subject) return fail(401, 'Sign in to make a benchmark of your own.');
+        const kind = kindById(values.kind);
+        if (!kind) return fail(422, 'Pick one of Bench’s kinds.');
+        const parsed = parsePrompts(values.prompts, { format: values.format });
+        if (!parsed.ok) return fail(422, parsed.detail);
+        const definition = definitionFor({ prompts: parsed.prompts, kind: kind.id, title: values.title, description: values.description });
+        try {
+            const made = await registry.createBenchmark({
+                owner: subject, title: definition.title, description: definition.description, kind: definition.kind,
+                tags: definition.tags, definition, subject,
+            });
+            if (!made.ok) return fail(made.status || 422, made.message || 'The benchmark could not be made.');
+            const frozen = await registry.freezeVersion(made.benchmark.id, { definition, subject, validate: validateBenchmark });
+            if (!frozen.ok) return fail(frozen.status || 422, frozen.message || 'The benchmark could not be frozen.');
+            return res.redirect(303, `/benchmarks/${encodeURIComponent(made.benchmark.id)}`);
+        } catch (err) {
+            ctx.log.warn('[OpenVibe.Bench] making a prompt benchmark failed:', (err && err.message) || err);
+            return fail(500, 'The benchmark could not be made. Try again in a moment.');
+        }
+    });
+
+    // A share link: only an unlisted benchmark has one, and only its hash is stored.
+    r.get('/b/:token', async (req, res) => {
+        const benchmark = await registry.findShared(String(req.params.token || ''));
+        if (!benchmark) return notFound(req, res, 'share link');
+        const out = await registry.getDefinition(benchmark.id, { reveal: false });
+        if (!out) return notFound(req, res, 'share link');
+        return renderBenchmark(req, res, out, { shared: true });
+    });
+
+    // ---- a person's own benchmarks: the default audience, "apply to all", and each Share button -----------------
+    const myBenchmarksPage = async (req, res, extra = {}) => {
+        const subject = subjectOf(req);
+        if (!subject) return res.redirect(302, `/auth/login?next=${encodeURIComponent('/benchmarks/mine')}`);
+        const mine = await registry.listBenchmarks({ owner: subject, limit: 200, viewer: subject });
+        const counts = await registry.runCounts();
+        for (const b of mine) {
+            b.runs = counts.get(b.id) || 0;
+            // The column says private for both Only me and Specific people; the share row names the real audience.
+            const row = ctx.sharing ? await ctx.sharing.shareOf(b.id).catch(() => null) : null;
+            if (row) b.audience = row.audience;
+        }
+        const defaultAudience = ctx.sharing ? await ctx.sharing.defaultAudience(subject) : 'private';
+        return page(req, res, {
+            index: false, cache: null,
+            title: 'Your benchmarks',
+            description: 'Your benchmarks: the default audience for new ones, and who can open each one.',
+            body: raw(String(results.myBenchmarks({ benchmarks: mine, defaultAudience, baseUrl: base(), ...extra }))),
+        }, extra.status || 200);
+    };
+    r.get('/benchmarks/mine', async (req, res) => {
+        const saved = req.query.saved === '1';
+        const changed = Number.parseInt(req.query.changed, 10) || 0;
+        const notice = saved
+            ? `Sharing preference saved.${changed ? ` Updated ${changed} existing ${changed === 1 ? 'benchmark' : 'benchmarks'}.` : ''}`
+            : null;
+        return myBenchmarksPage(req, res, notice ? { notice } : {});
+    });
+    r.post('/benchmarks/mine/default', express.urlencoded({ extended: false, limit: '16kb' }), ctx.principal.middleware, async (req, res) => {
+        if (!sameOrigin(req, config)) return res.status(403).type('text').send('This form only works from Bench itself.');
+        const subject = subjectOf(req);
+        if (!subject) return res.redirect(303, `/auth/login?next=${encodeURIComponent('/benchmarks/mine')}`);
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const audience = String(body.audience || '');
+        if (!ctx.sharing || !ctx.sharing.AUDIENCES.includes(audience)) {
+            return myBenchmarksPage(req, res, { status: 422, error: 'Choose Everyone, Anyone with the link, Specific people, or Only me.' });
+        }
+        await ctx.sharing.setDefaultAudience(subject, audience);
+        const changed = body.apply === '1' ? await ctx.sharing.applyDefault(subject, audience) : 0;
+        const query = new URLSearchParams({ saved: '1', changed: String(changed) });
+        return res.redirect(303, `/benchmarks/mine?${query}`);
+    });
+
+    // The owner shares, unshares or publishes: a plain same-origin form post.
+    r.post('/benchmarks/:ref/share', express.urlencoded({ extended: false, limit: '16kb' }), ctx.principal.middleware, async (req, res) => {
+        if (!sameOrigin(req, config)) return res.status(403).type('text').send('This form only works from Bench itself.');
+        const subject = subjectOf(req);
+        const out = await registry.getDefinition(String(req.params.ref || ''), { reveal: false });
+        if (!out || !subject || String(out.benchmark.owner) !== String(subject)) return notFound(req, res, 'benchmark');
+        const changed = await registry.setVisibility(out.benchmark.id, { visibility: String((req.body || {}).visibility || ''), subject });
+        if (!changed.ok) {
+            return page(req, res, { index: false, title: out.benchmark.title, body: raw(String(results.benchmarkPage({ benchmark: out.benchmark, definition: out.definition, version: out.version && out.version.version, rankings: await registry.rankings({ benchmark: out.benchmark.id, metric: 'score' }), runs: await registry.listRuns({ benchmark: out.benchmark.id, limit: 8 }), codesRunUrl: config.codesRunUrl || null, viewer: req.viewer, baseUrl: base(), owner: true, share: { error: changed.message } }))) }, 422);
+        }
+        const fresh = await registry.getDefinition(out.benchmark.id, { reveal: false });
+        return renderBenchmark(req, res, fresh, {
+            share: changed.token ? { shareUrl: `${base()}${changed.share_path}`, token: changed.token } : null,
+        });
+    });
+
+    // One task, and the signed-in editors' human-time estimates (B13). A plain form, same-origin, rate-limited in
+    // the registry per person; nothing here logs the text of a held-out task.
+    const taskContext = async (req) => {
+        const out = await readableBenchmark(req, req.params.ref);
+        if (!out) return null;
+        const version = out.version && out.version.version;
+        const task = ((out.definition && out.definition.tasks) || []).find((t) => String(t.id) === String(req.params.taskId));
+        if (!task) return null;
+        const estimates = await registry.taskEstimateSummary(out.benchmark.id, version, task.id);
+        return { out, version, task, estimates };
+    };
+    const taskPage = async (req, res, extra = {}) => {
+        const found = await taskContext(req);
+        if (!found) return notFound(req, res, 'task');
+        const subject = subjectOf(req);
+        return page(req, res, {
+            index: false, title: `${found.task.id} on ${found.out.benchmark.title}`,
+            description: `A task of ${found.out.benchmark.title}: its human-time estimate and the editors’ median.`,
+            body: raw(String(results.taskPage({
+                benchmark: found.out.benchmark, version: found.version, task: found.task, estimates: found.estimates,
+                signedIn: Boolean(subject), loginUrl: `/auth/login?next=${encodeURIComponent(req.originalUrl)}`,
+                ...extra,
+            }))),
+        }, extra.status || 200);
+    };
+    r.get('/benchmarks/:ref/tasks/:taskId', (req, res) => taskPage(req, res));
+    r.post('/benchmarks/:ref/tasks/:taskId/estimates', express.urlencoded({ extended: false, limit: '8kb' }), ctx.principal.middleware, async (req, res) => {
+        const subject = subjectOf(req);
+        const found = await taskContext(req);
+        if (!found) return notFound(req, res, 'task');
+        if (!subject) return taskPage(req, res, { error: 'Sign in to add an estimate.', status: 401 });
+        if (!sameOrigin(req, config)) return res.status(403).type('text').send('This form only works from Bench itself.');
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const version = body.version == null ? found.version : Number(body.version);
+        const out = await registry.addTaskEstimate({
+            benchmarkId: found.out.benchmark.id, version, taskId: found.task.id,
+            minutes: body.minutes, subject,
+        });
+        if (!out.ok) return taskPage(req, res, { error: out.message || 'The estimate could not be saved.', status: out.status || 422 });
+        return res.redirect(303, `/benchmarks/${encodeURIComponent(found.out.benchmark.id)}/tasks/${encodeURIComponent(found.task.id)}`);
+    });
+
+    r.get('/benchmarks/:ref', async (req, res) => {
+        const out = await readableBenchmark(req, req.params.ref);
+        if (!out) return notFound(req, res, 'benchmark');
+        // The public page lives on Compare (11-13), which reads only the public API: its owner, a named
+        // reader and an unlisted link keep the page here.
+        const subject = subjectOf(req);
+        const owner = subject != null && String(out.benchmark.owner) === String(subject);
+        if (!owner && out.benchmark.visibility === 'public') {
+            const compare = String(config.compareUrl || 'https://openvibe.compare').replace(/\/+$/, '');
+            return res.redirect(301, `${compare}/ai/${encodeURIComponent(out.benchmark.id)}`);
+        }
+        return renderBenchmark(req, res, out);
+    });
+
+    // The run form (B3): GET shows it, POST starts the run through the same launcher as the API.
+    const runFormPage = async (req, res, extra = {}) => {
+        const ref = String(req.params.ref || '');
+        const out = await readableBenchmark(req, ref);
+        if (!out) return notFound(req, res, 'benchmark');
+        if (!config.codesRunUrl) return res.redirect(303, `/benchmarks/${encodeURIComponent(out.benchmark.id)}`);
+        const signedIn = req.viewer && req.viewer.kind === 'user';
+        return page(req, res, {
+            index: false, title: `Run ${out.benchmark.title}`,
+            description: `Run ${out.benchmark.title} on openvibe.codes with your own keys or the free pool.`,
+            body: raw(String(results.runForm({
+                benchmark: out.benchmark, definition: out.definition, version: out.version && out.version.version, signedIn,
+                harnesses: signedIn ? await ctx.launcher.harnessList() : [],
+                suggested: signedIn ? (((await registry.rankings({ benchmark: out.benchmark.id, metric: 'score' })) || {}).entries || []).map((e) => e.model) : [],
+                loginUrl: `/auth/login?next=${encodeURIComponent(req.originalUrl)}`, ...extra,
+            }))),
+        }, extra.status || 200);
+    };
+    r.get('/benchmarks/:ref/run', (req, res) => runFormPage(req, res));
+    r.post('/benchmarks/:ref/run', express.urlencoded({ extended: false, limit: '16kb' }), ctx.principal.middleware, async (req, res) => {
+        if (!sameOrigin(req, config)) return res.status(403).type('text').send('This form only works from Bench itself.');
+        const b = req.body || {};
+        const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+        const models = [...list(b.models), ...String(b.more_models || '').split(',')].map((x) => x.trim()).filter(Boolean);
+        const harnesses = list(b.harnesses);
+        const repeat = Number(b.repeat || 1);
+        const picked = { models, harnesses, repeat };
+        const out = await ctx.launcher.launch({ principal: req.principal, id: req.params.ref, models, harnesses, repeat, confirm: b.confirm === '1' });
+        if (out.status === 202) return res.redirect(303, out.body.tasks_url || config.codesRunUrl);
+        if (out.status === 404) return notFound(req, res, 'benchmark');
+        if (out.status === 409) return runFormPage(req, res, { picked, confirm: out.body.cost_estimate_usd == null ? 'unknown' : out.body.cost_estimate_usd });
+        return runFormPage(req, res, { picked, error: out.body.detail || 'The run could not start.', status: out.status === 400 ? 400 : 200 });
+    });
+
+    r.get('/runs/:id', async (req, res) => {
+        const run = await registry.getRun(String(req.params.id || ''));
+        if (!run) return notFound(req, res, 'run');
+        const def = await registry.getDefinition(`${run.benchmark_id}@${run.benchmark_version}`, { reveal: false });
+        const benchmark = def ? def.benchmark : null;
+        if (benchmark && !canViewBenchmark(benchmark, { subject: subjectOf(req) })) return notFound(req, res, 'run');
+        const pct = run.score != null ? await registry.percentile({ benchmark: run.benchmark_id, model: run.model, score: run.score }) : null;
+        const isPublic = !benchmark || benchmark.visibility === 'public';
+        return page(req, res, {
+            index: isPublic && run.provenance === 'verified', cache: isPublic ? PUBLIC_CACHE : null,
+            title: `${run.model} on ${benchmark ? benchmark.title : run.benchmark_id}`,
+            description: `${run.model} scored ${results.fmtScore(run.score)} out of 100 on ${benchmark ? benchmark.title : 'this benchmark'}, for ${results.fmtUsd(run.cost_usd)}.`,
+            body: raw(String(results.runPage({ run, benchmark, definition: def && def.definition, pct }))),
+        });
+    });
+
+    r.get('/compare', async (req, res) => {
+        const refs = String(req.query.runs || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 4);
+        let cmp = refs.length ? await registry.compareRuns(refs) : null;
+        const titles = {};
+        let allPublic = true;
+        if (cmp) {
+            const subject = subjectOf(req);
+            const keep = [];
+            for (const run of cmp.runs) {
+                const b = await registry.getBenchmark(run.benchmark_id);
+                if (!b || !canViewBenchmark(b, { subject })) continue;
+                if (b.visibility !== 'public') allPublic = false;
+                titles[b.id] = b.title;
+                keep.push(run);
+            }
+            cmp = keep.length ? { ...cmp, runs: keep, rows: cmp.rows.map((row) => ({ ...row, scores: keep.map((run) => { const t = run.tasks.find((x) => x.task_id === row.task_id); return t ? t.score : null; }) })) } : null;
+        }
+        return page(req, res, {
+            index: false, cache: allPublic ? PUBLIC_CACHE : null,
+            title: cmp ? `Compare: ${cmp.runs.map((x) => x.model).join(' vs ')}` : 'Compare runs',
+            description: 'Runs side by side: the same tasks, their scores, cost, time and outputs.',
+            body: raw(String(results.comparePage({ cmp, titles }))),
+        });
+    });
+
+    r.get('/models/:model', async (req, res) => {
+        const model = String(req.params.model || '').slice(0, 160);
+        const [summary, runs, horizon] = await Promise.all([
+            registry.modelSummary(model),
+            registry.listRuns({ model, publicOnly: true, limit: 12 }),
+            registry.modelHorizon(model),
+        ]);
+        const titles = {};
+        for (const b of summary.benchmarks) titles[b.benchmark_id] = b.title;
+        for (const run of runs) {
+            if (!titles[run.benchmark_id]) { const b = await registry.getBenchmark(run.benchmark_id); if (b) titles[b.id] = b.title; }
+        }
+        return page(req, res, {
+            index: summary.runs > 0, cache: PUBLIC_CACHE,
+            title: model,
+            description: `${model} across OpenVibe.Bench: its median score, spread, cost and time on every benchmark it ran.`,
+            body: raw(String(results.modelPage({ model, summary, runs, titles, viewer: req.viewer, baseUrl: base(), horizon }))),
+        }, summary.runs > 0 || runs.length ? 200 : 404);
+    });
+
+    r.get('/docs', (req, res) => page(req, res, {
+        index: true, cache: PUBLIC_CACHE,
+        title: 'The Bench API',
+        description: 'The Bench JSON API, the boards, the open dataset and the MCP tools.',
+        jsonLd: [seo.jsonLd.webPage({ name: 'The Bench API', url: `${base()}/docs`, description: 'The Bench JSON API, the boards, the open dataset and the MCP tools.', siteUrl: base() })],
+        body: raw(views.docs()),
+    }));
+
+    r.use(createDiscoveryRoutes(ctx));
+
+    return r;
+}
+
+module.exports = { createPageRoutes };

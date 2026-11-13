@@ -1,0 +1,212 @@
+'use strict';
+
+/**
+ * What a benchmark and a run must look like before Bench stores them.
+ *
+ * The shapes are the released contracts (bench.benchmark@1 and bench.run@1, openvibe-contracts). Bench keeps its
+ * own copy of the rules so the service can refuse a bad document before it reaches the database, and so a caller
+ * gets a field-level error instead of a stack trace.
+ *
+ * The rules mirror the contract's: the same required fields, the same enums, the same ranges. The one addition is
+ * private visibility (B11), Bench's stricter form of unlisted: the benchmark row is private while the frozen
+ * contract document stays unlisted, so every stored contract document remains a valid bench.benchmark@1.
+ */
+
+const { assertValid } = require('openvibe-contracts');
+
+const isStr = (v) => typeof v === 'string';
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const num = (v, d = 0) => (v == null || v === '' || Number.isNaN(Number(v)) ? d : Number(v));
+/** A measurement a harness did not record is null, never 0. */
+const numOrNull = (v) => (v == null || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+
+/** The contract's id patterns. */
+const BENCHMARK_ID = /^bmk_[0-9A-HJKMNP-TV-Z]{26}$/;
+const RUN_ID = /^brn_[0-9A-HJKMNP-TV-Z]{26}$/;
+const BENCHMARK_REF = /^bmk_[0-9A-HJKMNP-TV-Z]{26}@[0-9]+$/;
+
+// private is Bench's own stricter form of unlisted (B11): the row's access is private; the frozen contract
+// document says unlisted, because the published shape knows only public and unlisted.
+const VISIBILITIES = ['public', 'unlisted', 'private'];
+const SCORING_METHODS = ['mean', 'weighted', 'pass_rate', 'sum'];
+const EXECUTOR_KINDS = ['codes', 'run', 'node', 'submitted'];
+const PROVENANCES = ['verified', 'submitted'];
+const TASK_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+class Errors {
+    constructor() { this.list = []; }
+    add(path, message) { this.list.push({ path, message }); return this; }
+    get valid() { return this.list.length === 0; }
+    get detail() { return this.list.map((e) => `${e.path} ${e.message}`).join('; '); }
+}
+
+function validateBenchmark(doc) {
+    const e = new Errors();
+    if (!isObj(doc)) return { valid: false, errors: [{ path: '/', message: 'must be an object' }] };
+    if (!isStr(doc.id) || !BENCHMARK_ID.test(doc.id)) e.add('/id', 'must be a benchmark id (bmk_…)');
+    if (!isStr(doc.owner) || !doc.owner.trim()) e.add('/owner', 'is required');
+    if (!isStr(doc.title) || !doc.title.trim() || doc.title.length > 160) e.add('/title', 'must be 1-160 characters');
+    if (!isStr(doc.kind) || !doc.kind.trim()) e.add('/kind', 'is required');
+    if (!Array.isArray(doc.tags) || doc.tags.length > 32) e.add('/tags', 'must be an array of at most 32 tags');
+    if (!VISIBILITIES.includes(doc.visibility)) e.add('/visibility', 'is public or unlisted');
+    if (!isNum(doc.version) || doc.version < 1) e.add('/version', 'must be a positive integer');
+    if (doc.parent != null && !isStr(doc.parent)) e.add('/parent', 'must be a string or null');
+    if (!Array.isArray(doc.tasks)) e.add('/tasks', 'must be an array');
+    else {
+        doc.tasks.forEach((t, i) => {
+            if (!isObj(t)) { e.add(`/tasks/${i}`, 'must be an object'); return; }
+            if (!isStr(t.id) || !t.id.trim()) e.add(`/tasks/${i}/id`, 'is required');
+            if (!isStr(t.prompt) || !t.prompt.trim()) e.add(`/tasks/${i}/prompt`, 'is required');
+            if (t.holdout != null && typeof t.holdout !== 'boolean') e.add(`/tasks/${i}/holdout`, 'must be true or false');
+            if (t.held_out != null && typeof t.held_out !== 'boolean') e.add(`/tasks/${i}/held_out`, 'must be true or false');
+            if (t.holdout == null && t.held_out == null) e.add(`/tasks/${i}/holdout`, 'must be true or false');
+            if (t.added_on != null) {
+                const date = String(t.added_on).slice(0, 10);
+                if (!TASK_DATE.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) {
+                    e.add(`/tasks/${i}/added_on`, 'must be a date (YYYY-MM-DD)');
+                }
+            }
+            if (t.human_minutes != null && (!isNum(t.human_minutes) || t.human_minutes <= 0 || t.human_minutes > 100000)) {
+                e.add(`/tasks/${i}/human_minutes`, 'must be a positive number of minutes');
+            }
+            if (t.human_minutes_source != null && (!isStr(t.human_minutes_source) || t.human_minutes_source.length > 200)) {
+                e.add(`/tasks/${i}/human_minutes_source`, 'must be a string of at most 200 characters');
+            }
+        });
+    }
+    if (!Array.isArray(doc.judges)) e.add('/judges', 'must be an array');
+    else {
+        doc.judges.forEach((j, i) => {
+            if (!isObj(j)) { e.add(`/judges/${i}`, 'must be an object'); return; }
+            if (!isStr(j.type) || !j.type.trim()) e.add(`/judges/${i}/type`, 'is required');
+            if (!isStr(j.version) || !j.version.trim()) e.add(`/judges/${i}/version`, 'is required');
+            if (!isObj(j.config)) e.add(`/judges/${i}/config`, 'must be an object');
+        });
+    }
+    if (!isObj(doc.scoring)) e.add('/scoring', 'must be an object');
+    else {
+        if (!SCORING_METHODS.includes(doc.scoring.method)) e.add('/scoring/method', `must be one of ${SCORING_METHODS.join(', ')}`);
+        if (!isObj(doc.scoring.scale)) e.add('/scoring/scale', 'must be an object');
+    }
+    if (!isObj(doc.limits)) e.add('/limits', 'must be an object');
+    if (!isObj(doc.matrix)) e.add('/matrix', 'must be an object');
+    return { valid: e.valid, errors: e.list };
+}
+
+function validateRun(doc) {
+    const e = new Errors();
+    if (!isObj(doc)) return { valid: false, errors: [{ path: '/', message: 'must be an object' }] };
+    if (!isStr(doc.id) || !RUN_ID.test(doc.id)) e.add('/id', 'must be a run id (brn_…)');
+    if (!isStr(doc.benchmark) || !BENCHMARK_REF.test(doc.benchmark)) e.add('/benchmark', 'must be a benchmark id@version');
+    if (!isStr(doc.model) || !doc.model.trim()) e.add('/model', 'is required');
+    if (!isStr(doc.provider) || !doc.provider.trim()) e.add('/provider', 'is required');
+    if (!isObj(doc.route)) e.add('/route', 'must be an object');
+    if (!isObj(doc.harness) || !isStr(doc.harness.name) || !isStr(doc.harness.version)) e.add('/harness', 'needs a name and a version');
+    if (!isObj(doc.settings)) e.add('/settings', 'must be an object');
+    if (!isObj(doc.executor)) e.add('/executor', 'must be an object');
+    else if (!EXECUTOR_KINDS.includes(doc.executor.kind)) e.add('/executor/kind', `must be one of ${EXECUTOR_KINDS.join(', ')}`);
+    if (!Array.isArray(doc.tasks)) e.add('/tasks', 'must be an array');
+    else {
+        doc.tasks.forEach((t, i) => {
+            if (!isObj(t)) { e.add(`/tasks/${i}`, 'must be an object'); return; }
+            if (!isStr(t.task_id) || !t.task_id.trim()) e.add(`/tasks/${i}/task_id`, 'is required');
+            if (t.score != null && (!isNum(t.score) || t.score < 0 || t.score > 100)) e.add(`/tasks/${i}/score`, 'must be null or 0-100');
+            if (t.cost_usd != null && (!isNum(t.cost_usd) || t.cost_usd < 0)) e.add(`/tasks/${i}/cost_usd`, 'must be null, or 0 or more');
+            if (t.ms != null && (!isNum(t.ms) || t.ms < 0)) e.add(`/tasks/${i}/ms`, 'must be null, or 0 or more');
+            if (t.tokens != null && (!isNum(t.tokens) || t.tokens < 0)) e.add(`/tasks/${i}/tokens`, 'must be null, or 0 or more');
+            if (!Array.isArray(t.artifacts)) e.add(`/tasks/${i}/artifacts`, 'must be an array');
+        });
+    }
+    if (doc.score != null && (!isNum(doc.score) || doc.score < 0 || doc.score > 100)) e.add('/score', 'must be null or 0-100');
+    if (doc.cost_usd != null && (!isNum(doc.cost_usd) || doc.cost_usd < 0)) e.add('/cost_usd', 'must be null, or 0 or more');
+    if (doc.ms != null && (!isNum(doc.ms) || doc.ms < 0)) e.add('/ms', 'must be null, or 0 or more');
+    if (doc.tokens != null && (!isNum(doc.tokens) || doc.tokens < 0)) e.add('/tokens', 'must be null, or 0 or more');
+    if (!PROVENANCES.includes(doc.provenance)) e.add('/provenance', 'must be verified or submitted');
+    return { valid: e.valid, errors: e.list };
+}
+
+
+/**
+ * The bench.run@1 document for a run Bench is about to store: exactly the published shape, nothing else. The extra
+ * fields Bench keeps for itself (the benchmark id and version, the session) stay in the database, not in the
+ * contract, so what a caller reads back is what the contract says.
+ *
+ * A measurement the source did not record stays null here. bench.run@2 still types cost, time and tokens as numbers;
+ * the shape check normalises those nulls (see checkContract) while the returned document keeps the honest value.
+ */
+function contractRun(doc, createdAt) {
+    const harness = (doc.harness && typeof doc.harness === 'object') ? doc.harness : {};
+    const settings = (doc.settings && typeof doc.settings === 'object') ? doc.settings : {};
+    const executor = (doc.executor && typeof doc.executor === 'object') ? doc.executor : {};
+    const tasks = (Array.isArray(doc.tasks) ? doc.tasks : []).map((t) => {
+        const out = {
+            task_id: String(t.task_id || ''),
+            score: t.score == null ? null : num(t.score),
+            cost_usd: numOrNull(t.cost_usd),
+            ms: t.ms == null ? null : Math.round(num(t.ms)),
+            tokens: t.tokens == null ? null : Math.round(num(t.tokens)),
+            artifacts: (Array.isArray(t.artifacts) ? t.artifacts : [])
+                .map((a) => ({ kind: String(a.kind || 'file'), url: String(a.url || '') }))
+                .filter((a) => a.url),
+        };
+        if (t.transcript_url) out.transcript_url = String(t.transcript_url);
+        return out;
+    });
+    const out = {
+        id: String(doc.id || ''),
+        benchmark: String(doc.benchmark || ''),
+        model: String(doc.model || ''),
+        route: (doc.route && typeof doc.route === 'object') ? doc.route : {},
+        provider: String(doc.provider || ''),
+        harness: { name: String(harness.name || ''), version: String(harness.version || '') },
+        settings: {
+            temperature: settings.temperature == null ? null : Number(settings.temperature),
+            effort: settings.effort == null ? null : String(settings.effort),
+        },
+        executor: { kind: String(executor.kind || ''), id: String(executor.id || '') },
+        tasks,
+        score: doc.score == null ? null : num(doc.score),
+        cost_usd: numOrNull(doc.cost_usd),
+        ms: doc.ms == null ? null : Math.round(num(doc.ms)),
+        tokens: doc.tokens == null ? null : Math.round(num(doc.tokens)),
+        provenance: String(doc.provenance || ''),
+        created_at: createdAt || new Date().toISOString(),
+    };
+    if (doc.hardware != null) out.hardware = doc.hardware;
+    return out;
+}
+
+/**
+ * The published contract has the last word: a document that does not match it is refused.
+ *
+ * bench.run@2 still types cost, time and tokens as numbers, while Bench keeps an unmeasured one as null. With
+ * `allowMissingMeasurements`, the check runs on a copy whose null measurements are marked as 0 for the shape check
+ * only; the stored document keeps the null. A measured 0 is still 0.
+ */
+function checkContract(name, doc, { allowMissingMeasurements = false } = {}) {
+    let candidate = doc;
+    if (allowMissingMeasurements && name === 'bench.run@2' && doc && typeof doc === 'object') {
+        const at = (v) => (v == null ? 0 : v);
+        candidate = {
+            ...doc,
+            cost_usd: at(doc.cost_usd),
+            ms: at(doc.ms),
+            tokens: at(doc.tokens),
+            tasks: (Array.isArray(doc.tasks) ? doc.tasks : []).map((t) => ({
+                ...t,
+                cost_usd: at(t.cost_usd),
+                ms: at(t.ms),
+                tokens: at(t.tokens),
+            })),
+        };
+    }
+    try {
+        assertValid(name, candidate);
+        return { valid: true, errors: [] };
+    } catch (err) {
+        return { valid: false, errors: [{ path: '/', message: (err && err.message) || `does not match ${name}` }] };
+    }
+}
+
+module.exports = { validateBenchmark, validateRun, contractRun, checkContract, Errors, BENCHMARK_ID, RUN_ID, BENCHMARK_REF, VISIBILITIES, EXECUTOR_KINDS, PROVENANCES };
