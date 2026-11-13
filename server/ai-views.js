@@ -570,9 +570,6 @@ function fitNote(pair) {
     return `${esc(KIND_NAME[pair.task_kind] || pair.task_kind || 'Code')} · ${esc(String(pair.days || 365))} days · ${esc(Number(pair.games || 0).toLocaleString('en-US'))} games.`;
 }
 
-function arena() {
-    return page('AI Arena', 'Compare anonymous AI answers and vote.', `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>AI Arena</h1><p class="ai-lede">Two anonymous answers to one prompt; you pick the better one, then see which models wrote them. Every vote moves the ratings here.</p></header><p><a class="ovk-btn ovk-btn--primary" href="https://openvibe.exchange/arena">Vote in the Arena</a></p>`, '/ai/arena');
-}
 
 // ── The Bench pages (/ai/:ref): a task kind's board or one benchmark ──
 const JUDGE_SHORT = { human_pairwise: 'blind votes', audience_poll: 'audience polls', rubric: 'a rubric', automatic_grader: 'a grader', test_suite: 'a test suite', game_outcome: 'game results' };
@@ -841,6 +838,6 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
 }
 
 module.exports = {
-    hub, leaderboard, providers, model, compare, arena, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix,
+    hub, leaderboard, providers, model, compare, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix,
     availabilityBlock, measuredNote, benchState, page, scriptLd, PARTS_CSS,
 };
