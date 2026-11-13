@@ -7,6 +7,8 @@ main button,main summary{cursor:pointer}
 main .ovk-card{padding:1rem;margin:1rem 0;border:1px solid currentColor;border-radius:.5rem}
 main dl>div{padding:.5rem 0}main dd{margin:.25rem 0}
 .desktop-table{display:none}
+.measured-note{margin:1rem 0;max-width:75ch}
+.ovm-unknown{color:var(--text-muted,#8b96ad)}
 main table{border-collapse:separate;border-spacing:0;width:100%}
 main th,main td{padding:.75rem;text-align:left;border-bottom:1px solid currentColor;vertical-align:top}
 main pre{white-space:pre-wrap;overflow-wrap:anywhere}.evidence a{overflow-wrap:anywhere}
