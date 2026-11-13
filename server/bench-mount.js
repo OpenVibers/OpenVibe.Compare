@@ -8,9 +8,12 @@
  * parsed on its own, never merged into Compare's process.env, so Bench's DATABASE_URL, PORT and OAuth client do not
  * collide with Compare's. Without it Compare serves its own pages as before.
  *
- *   mountBench({ env, store, log }) → null | { app, host, ctx, start({ port }), stop() }   (host: Bench's own hostname)
+ *   mountBench({ env, store, log }) → null | { app, host, hosts, ctx, start({ port }), stop() }
+ *   host: Bench's own hostname; hosts: it and Bench's render origin (OV_RENDER_ORIGIN, else bench-render.openvibe.services)
  */
 const fs = require('node:fs');
+
+const hostOf = (url) => { try { return new URL(url).hostname.toLowerCase(); } catch { return null; } };
 
 async function mountBench({ env = process.env, store = null, log = console, benchEnv = null } = {}) {
     let own = benchEnv;
@@ -28,7 +31,8 @@ async function mountBench({ env = process.env, store = null, log = console, benc
     let extra = [];
     return {
         app: built.app,
-        host: (() => { try { return new URL(config.baseUrl).hostname.toLowerCase(); } catch { return null; } })(),
+        host: hostOf(config.baseUrl),
+        hosts: [hostOf(config.baseUrl), hostOf(env.OV_RENDER_ORIGIN || own.OV_RENDER_ORIGIN || 'https://bench-render.openvibe.services')].filter(Boolean),
         ctx: built.ctx,
         /** Bench's jobs, publisher, telemetry and Events subscriptions; `port` is Compare's (for /internal/events). */
         start({ port } = {}) { extra = bench.startServices(built.ctx, { port }); },
