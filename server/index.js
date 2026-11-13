@@ -5,7 +5,7 @@ const {mountBench}=require('./bench-mount');
 (async()=>{
  const bench=await mountBench({env:process.env});
  const port=Number(process.env.PORT)||5280;
- const server=createApp({bench:bench&&bench.app,benchHost:bench&&bench.host}).listen(port,process.env.HOST||'127.0.0.1',()=>{
+ const server=createApp({bench:bench&&bench.app,benchHost:bench&&bench.hosts}).listen(port,process.env.HOST||'127.0.0.1',()=>{
    console.log(`[OpenVibe.Compare] on ${port}${bench?` with Bench (db ${bench.ctx.s.db.store})`:''}`);
  });
  server.keepAliveTimeout=65_000;

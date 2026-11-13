@@ -49,7 +49,8 @@ test('with Bench mounted, Compare answers Bench\'s API behind its own routes', a
     const bench = await mountBench({ benchEnv, store: createStore(testdb.db), log: silent });
     assert.ok(bench && bench.app && bench.ctx, 'Bench is mounted');
     assert.equal(bench.host, 'bench.openvibe.services');
-    const { server, base } = await listen(createApp({ ...stubs(), bench: bench.app, benchHost: bench.host }));
+    assert.deepEqual(bench.hosts, ['bench.openvibe.services', 'bench-render.openvibe.services'], 'Bench\'s render origin is Bench\'s too');
+    const { server, base } = await listen(createApp({ ...stubs(), bench: bench.app, benchHost: bench.hosts }));
     try {
         const kinds = await fetch(`${base}/api/v1/kinds`);
         assert.equal(kinds.status, 200, 'Bench\'s kinds, through Compare');

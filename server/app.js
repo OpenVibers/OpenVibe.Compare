@@ -19,10 +19,12 @@ function defaultSso(){
 // bench: Bench's Express app when Compare carries Bench (server/bench-mount.js, plan §X step 2b): it answers every
 // path Compare's own routes do not (its API, MCP, battles, imports, renders), before Compare's 404. benchHost: Bench's
 // own host (bench.openvibe.services): a request for it is Bench's whole, so its 301s to Compare and its internal routes
-// answer as before and Compare's pages never appear under Bench's name.
+// answer as before and Compare's pages never appear under Bench's name. A list names every host of Bench's (its own and
+// its render origin, bench-render.openvibe.services, where model outputs are served cookie-less).
 function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(),sso=null,bench=null,benchHost=null}={}) {
  const app=express();app.disable('x-powered-by');
- if(bench&&benchHost) app.use((req,res,next)=>String(req.headers.host||'').split(':')[0].toLowerCase()===benchHost?bench(req,res,next):next());
+ const benchHosts=new Set([].concat(benchHost||[]).filter(Boolean).map((h)=>String(h).toLowerCase()));
+ if(bench&&benchHosts.size) app.use((req,res,next)=>benchHosts.has(String(req.headers.host||'').split(':')[0].toLowerCase())?bench(req,res,next):next());
  app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','strict-origin-when-cross-origin');next();});
  app.use(express.static(path.join(__dirname,'../public')));
  app.use('/shared',require('openvibe-shared/serve').handler());
