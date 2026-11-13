@@ -16,9 +16,14 @@ API**. Server-rendered pages; `openvibe-shared` for the shell.
 
 - `GET /` — the comparison index and search.
 - `GET /comparisons/:slug` — one comparison; weight overrides via `?w.<criterion>=`.
-- `GET /things/:id` — one thing across every comparison that contains it; `/models/:org/:model`
-  301s here.
+- `GET /things/:id` — one thing across every comparison that contains it; an AI model's thing page
+  and `/models/:org/:model` 301 to `/ai/models/:model`.
 - `GET /compute` — compute prices from Exchange: filters, sorts and a two/three-offer side-by-side.
+- `GET /ai`, `/ai/leaderboard`, `/ai/providers`, `/ai/models/:model`, `/ai/compare[/:a-vs-:b]`,
+  `/ai/method`, `/ai/feed.xml`, `/ai/:ref` (a Bench task kind or benchmark) and `/ai/arena` — Report's
+  AI comparison pages, with Bench's boards through `openvibe-sdk/bench`, the AI catalogue and Exchange
+  market joined, and Report's measured first token, tokens per second and success beside the prices.
+  `/comparisons/ai-models` and an AI model's `/things/:id` 301 to the AI pages.
 - `GET /api/v1/comparisons[/:slug]` and `GET /api/v1/compute` — the same data as JSON, CORS-allowed
   for the origins in [server/origins.json](server/origins.json).
 - `robots.txt`, `sitemap.xml`, `llms.txt`, Dataset JSON-LD, and `Accept: text/markdown` negotiation —
@@ -29,8 +34,8 @@ schema with no API in v1).
 
 ## Who it reads
 
-Seven feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute book in
-[server/compute.js](server/compute.js) `SOURCE`:
+The feeds in [server/data.js](server/data.js) `ENDPOINTS` and [server/ai-data.js](server/ai-data.js),
+and the compute book in [server/compute.js](server/compute.js) `SOURCE`:
 
 | Feed | What |
 |---|---|
@@ -41,6 +46,8 @@ Seven feeds in [server/data.js](server/data.js) `ENDPOINTS`, and the compute boo
 | `billing.openvibe.network/api/v1/plans` | published plans (OpenVibe.Billing) |
 | `openvibe.report/api/v1/ai/performance?group=model&days=30` | measured AI time to first token, tokens per second and success rate, public model rows with a 20-call floor (OpenVibe.Report) |
 | `openvibe.exchange/api/compute/prices` | reviewed compute tariffs per provider and region (OpenVibe.Exchange) |
+| `bench.openvibe.services/api/v1/{kinds,ratings,benchmarks,rankings,runs,overview}` | AI boards, benchmarks and new runs through `openvibe-sdk/bench` (OpenVibe.Bench) |
+| `api.openvibe.exchange/api/v1/exchange/{catalog,market}` | AI catalogue and dated provider prices (OpenVibe.AI / Exchange) |
 
 It does not call AI, Live, Network or any authenticated API. Nothing here writes anywhere.
 
@@ -51,6 +58,9 @@ It does not call AI, Live, Network or any authenticated API. Nothing here writes
   health/ready, `/release.json`, `/api/v1`, pages, 404 and 503.
 - **Data:** [server/data.js](server/data.js) — fetches the seven feeds (8 s timeout; 3 s for Report), builds the three
   comparisons, coalesces concurrent reads and caches for ten minutes; a failed feed becomes `null`.
+- **AI data:** [server/ai-data.js](server/ai-data.js) joins the catalogue/market and Bench's boards with
+  Report's measured rows; [server/ai-views.js](server/ai-views.js) renders the Report pages and the Bench boards.
+  A failed source leaves a worded status and a dash, never a zero; pages cache for two minutes.
 - **Compute:** [server/compute.js](server/compute.js) normalizes Exchange's tariffs and derives the
   month (730 h) and GPU GB-hour prices; [server/compute-views.js](server/compute-views.js) renders the
   page, Markdown and Dataset JSON-LD. A failed feed is not cached.
