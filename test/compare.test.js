@@ -102,7 +102,7 @@ test('measured AI columns come from Report public model rows with Shared words a
 test('each /ai page answers 200 from stubbed sources, measured columns sit beside prices',async()=>{
  const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
  try {
-  const paths=['/ai','/ai/leaderboard','/ai/providers','/ai/models/maker%2Falpha','/ai/compare','/ai/compare/maker%2Falpha-vs-maker%2Fbeta','/ai/method','/ai/feed.xml','/ai/arena','/ai/chat.arena',`/ai/${BMK}`];
+  const paths=['/ai','/ai/leaderboard','/ai/providers','/ai/models/maker%2Falpha','/ai/compare','/ai/compare/maker%2Falpha-vs-maker%2Fbeta','/ai/method','/ai/feed.xml','/ai/chat.arena',`/ai/${BMK}`];
   for(const path of paths)assert.equal((await fetch(base+path)).status,200,path);
   const board=await (await fetch(base+'/ai/leaderboard')).text();assert.match(board,/First token p50/);assert.match(board,/Tokens\/s p50/);assert.match(board,/Success/);assert.match(board,/240 ms/);assert.match(board,/45\.2 tok\/s/);assert.match(board,/98\.0%/);assert.match(board,/Price/);assert.match(board,/ovk-table--stack/);
   const model=await (await fetch(base+'/ai/models/maker%2Falpha')).text();assert.match(model,/first token p50/);assert.match(model,/tokens\/s p50/);assert.match(model,/success/);assert.match(model,/240 ms/);assert.match(model,/45\.2 tok\/s/);assert.match(model,/98\.0%/);assert.match(model,/canonical" href="https:\/\/openvibe.compare\/ai\/models\/maker%2Falpha/);
@@ -126,7 +126,7 @@ test('a source down still answers 200 with words; the pair and old AI URLs 301',
 test('the sitemap, robots and llms.txt name the Compare AI pages',async()=>{
  const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
  try {
-  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/ai/arena','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
+  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/arena','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
   const robots=await (await fetch(base+'/robots.txt')).text();assert.match(robots,/Allow: \/ai/);assert.match(robots,/https:\/\/openvibe\.compare\/sitemap\.xml/);
   const llms=await (await fetch(base+'/llms.txt')).text();assert.match(llms,/https:\/\/openvibe\.compare\/ai/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/leaderboard/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/models\/maker%2Falpha/);
  }finally{await new Promise(r=>server.close(r));}
@@ -178,5 +178,23 @@ test('Compare signs people in through OpenVibe.Network: /auth/login sends the br
   assert.equal(to.searchParams.get('redirect_uri'),'https://openvibe.compare/auth/callback');
   const me=await fetch(base+'/auth/me');
   assert.ok([200,401].includes(me.status),`signed out, /auth/me answers: ${me.status}`);
+ }finally{await new Promise(r=>server.close(r));}
+});
+
+test('the Arena lives at /arena: the old address redirects, a signed-out vote goes to sign-in, Exchange links stay here',async()=>{
+ const {relink,localPath}=require('../server/arena');
+ assert.equal(relink('<a href="/arena/ask">Ask</a><form action="/arena/r1/vote"></form><a href="/rankings/chat">Board</a><a href="/ai/arena/r2">x</a>'),
+  '<a href="/arena">Ask</a><form action="/arena/r1/vote"></form><a href="/ai/chat">Board</a><a href="/arena/r2">x</a>');
+ assert.equal(localPath('/ai/arena/r9'),'/arena/r9');
+ assert.equal(localPath('/arena/r9'),'/arena/r9');
+ const {createApp}=require('../server/app');
+ const app=createApp({getData:async()=>[],getCompute:async()=>({}),ai:{comparison:async()=>({rows:[],tasks:[],updated_at:null})}});
+ const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+ try{
+  const base=`http://127.0.0.1:${server.address().port}`;
+  const old=await fetch(base+'/ai/arena',{redirect:'manual'});
+  assert.equal(old.status,301);assert.equal(old.headers.get('location'),'/arena');
+  const vote=await fetch(base+'/arena/r1/vote',{method:'POST',redirect:'manual',headers:{'content-type':'application/x-www-form-urlencoded',origin:'https://openvibe.compare'},body:'winner=a'});
+  assert.equal(vote.status,303);assert.equal(vote.headers.get('location'),'/auth/login?next=%2Farena%2Fr1%2Fvote');
  }finally{await new Promise(r=>server.close(r));}
 });

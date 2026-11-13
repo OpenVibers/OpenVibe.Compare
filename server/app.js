@@ -27,6 +27,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  const auth=sso||defaultSso();
  app.use('/auth',auth.router(express));
  app.use(auth.optionalAuth());
+ app.use(require('./arena').createArenaRoutes({page:(title,body,path)=>v.page(title,body,path,[],{robots:'noindex, nofollow',description:'Two anonymous AI answers to one prompt: pick the better one, then see which models wrote them.'}),baseUrl:PUBLIC_URL}));
  app.get('/release.json',(_q,r)=>r.json(require('openvibe-shared/release').createRelease({service:'compare',root:path.join(__dirname,'..')})));
  const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
  app.use('/api/v1',(req,res,next)=>{
@@ -41,7 +42,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  app.get('/robots.txt',(_q,r)=>r.type('text').send('User-agent: *\nAllow: /\nAllow: /ai\nSitemap: https://openvibe.compare/sitemap.xml\n'));
  app.get('/llms.txt',wrap(async(_q,r)=>{const [cs,compute,aiData]=await Promise.all([getData(),getCompute(),ai.comparison()]);return r.type('text').send('# OpenVibe.Compare\n\nDated comparisons. Missing evidence is not zero.\n\n'+`- [Compute prices](https://openvibe.compare/compute): GPUs and computers from OpenVibe.Exchange, per hour, per GPU GB-hour and per month at 24/7${compute.checked_at?`; checked ${compute.checked_at.slice(0,10)}`:''}.\n`+`- [AI model leaderboard](https://openvibe.compare/ai): ratings from blind votes, provider prices and measured speed.\n- [AI leaderboard](https://openvibe.compare/ai/leaderboard): every model with filters and sorts.\n- [AI providers](https://openvibe.compare/ai/providers): every provider offer with price, reply time, errors and uptime.\n- [AI method](https://openvibe.compare/ai/method): how a score, a cost and a speed are made.\n- [Harness effects](https://openvibe.compare/ai/harnesses): each harness's Elo effect apart from its model, with an interval.\n- [Harness × model matrix](https://openvibe.compare/ai/matrix): every agent as its harness and model, with interactions.\n- [AI results feed](https://openvibe.compare/ai/feed.xml): new public Bench runs as RSS.\n`+aiData.rows.map(c=>`- [${c.id}](https://openvibe.compare/ai/models/${encodeURIComponent(c.id)}): rating, prices and measured speed.`).join('\n')+'\n'+cs.map(c=>`- [${c.title}](https://openvibe.compare${c.slug==='ai-models'?'/ai':`/comparisons/${c.slug}`}): ${c.summary}`).join('\n')+'\n\nJSON: https://openvibe.compare/api/v1/comparisons\nCompute JSON: https://openvibe.compare/api/v1/compute\nEach page also accepts Accept: text/markdown.\n')}));
  app.get('/sitemap.xml',wrap(async(_q,r)=>{
-   const [cs,compute,aiData]=await Promise.all([getData(),getCompute(),ai.comparison()]);const newest=cs.map(c=>c.updated_at).sort().at(-1);const paths=new Map([['/',newest],['/compute',compute.checked_at||newest],['/ai',aiData.updated_at],['/ai/leaderboard',aiData.updated_at],['/ai/providers',aiData.updated_at],['/ai/method',aiData.updated_at],['/ai/harnesses',aiData.updated_at],['/ai/matrix',aiData.updated_at],['/ai/arena',aiData.updated_at]]);
+   const [cs,compute,aiData]=await Promise.all([getData(),getCompute(),ai.comparison()]);const newest=cs.map(c=>c.updated_at).sort().at(-1);const paths=new Map([['/',newest],['/compute',compute.checked_at||newest],['/ai',aiData.updated_at],['/ai/leaderboard',aiData.updated_at],['/ai/providers',aiData.updated_at],['/ai/method',aiData.updated_at],['/ai/harnesses',aiData.updated_at],['/ai/matrix',aiData.updated_at],['/arena',aiData.updated_at]]);
    for(const c of cs){if(c.slug==='ai-models')continue;paths.set(`/comparisons/${c.slug}`,c.updated_at);for(const t of c.things)paths.set(v.thingPath(t.id),c.updated_at);}
    for(const row of aiData.rows)paths.set(`/ai/models/${encodeURIComponent(row.id)}`,row.source&&row.source.date||aiData.updated_at);
    for(const task of aiData.tasks)paths.set(`/ai/${encodeURIComponent(task.id)}`,aiData.updated_at);
@@ -58,7 +59,8 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  app.get('/ai/providers',wrap(async(_q,r)=>{const data=await ai.comparison();return r.send(aiViews.providers(data));}));
  app.get('/ai/harnesses',wrap(async(req,res)=>res.send(aiViews.harnesses(await ai.factorBoard(req.query)))));
  app.get('/ai/matrix',wrap(async(req,res)=>res.send(aiViews.matrix(await ai.factorBoard(req.query)))));
- app.get('/ai/arena',(_q,r)=>r.send(aiViews.arena()));
+ // The Arena lives at /arena (plan §V.2, 11-13); the old explainer's address goes there.
+ app.get('/ai/arena',(_q,r)=>r.redirect(301,'/arena'));
  app.get('/ai/compare',wrap(async(req,res)=>{
    // The picker sends a and b; older links send models=a,b.
    const picked=[req.query.a,req.query.b].map(x=>String(x||'').trim()).filter(Boolean);
