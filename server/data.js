@@ -31,7 +31,7 @@ function measuredRows(feed) {
  return rows;
 }
 function measuredOf(rows,id,o) {
- return rows.get(id) || (o.provider_model ? rows.get(o.provider_model) : null) || null;
+ return rows.get(id) || (o.provider_model ? rows.get(o.provider_model) : null) || (o.model ? rows.get(o.model) : null) || null;
 }
 function build(feeds, at) {
  const models=base('ai-models','AI models','ai.models','Provider prices and measured Bench results. Unmeasured quality stays unknown.',at);
@@ -114,4 +114,4 @@ function createData({fetchImpl=fetch,now=Date.now,ttl=600000}={}) {
    return pending;
  };
 }
-module.exports={build,createData,ENDPOINTS};
+module.exports={build,createData,ENDPOINTS,measuredRows,measuredOf};
