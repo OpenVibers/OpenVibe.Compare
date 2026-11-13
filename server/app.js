@@ -16,8 +16,13 @@ function defaultSso(){
  return createSsoClient({site:'compare',baseUrl:PUBLIC_URL,clientId:process.env.OV_OAUTH_CLIENT_ID||'compare',clientSecret:process.env.OV_OAUTH_CLIENT_SECRET||'',
    networkUrl:process.env.OV_NETWORK_PUBLIC_URL||'https://openvibe.network',networkInternalUrl:process.env.OV_NETWORK_INTERNAL_URL||undefined,secureCookies:/^https:/.test(PUBLIC_URL)});
 }
-function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(),sso=null}={}) {
+// bench: Bench's Express app when Compare carries Bench (server/bench-mount.js, plan §X step 2b): it answers every
+// path Compare's own routes do not (its API, MCP, battles, imports, renders), before Compare's 404. benchHost: Bench's
+// own host (bench.openvibe.services): a request for it is Bench's whole, so its 301s to Compare and its internal routes
+// answer as before and Compare's pages never appear under Bench's name.
+function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(),sso=null,bench=null,benchHost=null}={}) {
  const app=express();app.disable('x-powered-by');
+ if(bench&&benchHost) app.use((req,res,next)=>String(req.headers.host||'').split(':')[0].toLowerCase()===benchHost?bench(req,res,next):next());
  app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Referrer-Policy','strict-origin-when-cross-origin');next();});
  app.use(express.static(path.join(__dirname,'../public')));
  app.use('/shared',require('openvibe-shared/serve').handler());
@@ -30,7 +35,8 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  app.use(require('./arena').createArenaRoutes({page:(title,body,path)=>v.page(title,body,path,[],{robots:'noindex, nofollow',description:'Two anonymous AI answers to one prompt: pick the better one, then see which models wrote them.'}),baseUrl:PUBLIC_URL}));
  app.get('/release.json',(_q,r)=>r.json(require('openvibe-shared/release').createRelease({service:'compare',root:path.join(__dirname,'..')})));
  const wrap=fn=>(req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
- app.use('/api/v1',(req,res,next)=>{
+ // CORS for Compare's own read-only API only: Bench's API (mounted below) answers its own preflights and methods.
+ app.use(['/api/v1/compute','/api/v1/comparisons'],(req,res,next)=>{
    const origin=req.get('Origin');
    if(origin && origins.has(origin)) res.set('Access-Control-Allow-Origin',origin);
    res.vary('Origin');res.set('Access-Control-Allow-Methods','GET, HEAD, OPTIONS');
@@ -97,6 +103,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(cs.map(c=>v.markdown({...c,things:[t]})).join('\n'));
    res.send(v.page(t.name,`<h1>${v.esc(t.name)}</h1><p>${v.esc(t.maker)}</p><a href="${v.esc(t.url)}">Original listing</a>${cs.map(c=>`<h2><a href="/comparisons/${c.slug}">${v.esc(c.title)}</a></h2><dl>${c.criteria.map(k=>`<dt>${v.esc(k.label)} (${v.esc(k.unit)})</dt><dd>${v.number(c.results.find(r=>r.thing===t.id && r.criterion===k.id),k)}</dd>`).join('')}</dl><p>${v.esc(c.method)}</p>`).join('')}`,req.path));
  }));
+ if(bench) app.use(bench);
  app.use((_q,r)=>r.status(404).send('Not found'));
  app.use((_e,_q,r,_n)=>r.status(503).json({error:'compare.unavailable'}));
  return app;

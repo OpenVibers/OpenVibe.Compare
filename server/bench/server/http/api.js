@@ -1,0 +1,457 @@
+'use strict';
+
+/**
+ * /api/v1 — OpenVibe.Bench's JSON API.
+ *
+ *   GET    /kinds
+ *   GET    /kinds/:kindId
+ *   POST   /kinds/:kindId/tasks
+ *   GET    /tasks/:id
+ *   POST   /tasks/:id/rounds
+ *   GET    /rounds/:id
+ *   POST   /rounds/:id/entries        (a room submits outside entries with a service token)
+ *   GET    /judgements/next
+ *   POST   /rounds/:id/judgements
+ *   GET    /boards/:kindId?type=elo|willing|pareto|cost&voters=people|anon
+ *   GET    /models/:model
+ *   POST   /matches                   (bench.match@1 from a service with bench.judgement.cast)
+ *   GET    /factors?task_kind=&category=&days=   model and harness apart, with intervals (bench.rating@1 factors)
+ *   GET    /datasets/:kindId.jsonl
+ *   POST   /evals
+ *   GET    /evals/:id
+ *   POST   /evals/:id/run
+ *   GET    /evals/:id/results
+ *
+ * A person is the bench_at session cookie or a Network user token as a Bearer; a service sends a client-credentials
+ * token with bench.* capabilities. A session write must come from bench.openvibe.services itself.
+ */
+const express = require('express');
+const { http, ids } = require('openvibe-contracts');
+const { asyncRouter } = require('./router');
+const { sameOrigin } = require('./same-origin');
+const { kindById, isPrivateKind } = require('../kinds');
+const { BenchError } = require('../store');
+const boardLib = require('../rating/board');
+
+function createApi(ctx) {
+    const { config, s, principal, bench, registry } = ctx;
+    const r = asyncRouter();
+
+    r.use(express.json({ limit: '64kb' }));
+    r.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+    r.use(principal.middleware);
+
+    const problem = (res, status, code, detail) => http.sendProblem(res, status, code, { detail, ctx: res.req && res.req.ov });
+    const invalid = (res, detail) => problem(res, 400, 'bench.invalid', detail);
+    const failed = (res, err) => {
+        if (err instanceof BenchError) return problem(res, err.status, err.code, err.detail);
+        ctx.log.warn('[OpenVibe.Bench] API failed:', (err && err.message) || err);
+        return problem(res, 500, 'internal.error', 'Bench could not answer. Try again in a moment.');
+    };
+
+    const subjectOf = (req) => (req.principal && req.principal.kind === 'user' ? req.principal.subject : null);
+    // A trusted room service may start a task for its signed-in creator. Quotas then belong to that
+    // creator, while service judgements continue to belong to the service principal itself.
+    const creatorOf = (req) => {
+        const person = subjectOf(req);
+        if (person) return person;
+        const acting = req.principal.requester === 'service:live' ? req.headers['x-ov-subject'] : null;
+        return ids.isSubjectId('user', acting) ? acting : req.principal.requester;
+    };
+
+    /** A person (any signed-in user) or a service token with the named capability. */
+    function actor(cap) {
+        return (req, res, next) => {
+            const p = req.principal;
+            if (p.kind === 'app') {
+                if (p.hasCapability(cap)) return next();
+                return problem(res, 403, 'bench.capability_denied', `A service token needs ${cap}.`);
+            }
+            if (p.kind === 'user') {
+                if (p.viaSession && req.method !== 'GET' && !sameOrigin(req, config)) {
+                    return problem(res, 403, 'bench.cross_site', 'A signed-in request that changes something must come from bench.openvibe.services itself.');
+                }
+                return next();
+            }
+            return problem(res, 401, 'bench.sign_in_required', 'Sign in at bench.openvibe.services, or send a service token.');
+        };
+    }
+
+    const requirePerson = principal.requirePerson;
+
+    // ── Kinds ───────────────────────────────────────────────
+    r.get('/kinds', async (req, res) => {
+        const list = await bench.listKinds({ includeAdult: true });
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ count: list.length, kinds: list });
+    });
+
+    r.get('/kinds/:kindId', async (req, res) => {
+        const kind = await bench.getKind(String(req.params.kindId || ''));
+        if (!kind) return problem(res, 404, 'bench.kind_not_found', 'No such kind.');
+        res.set('Cache-Control', 'public, max-age=300');
+        return res.json({ kind });
+    });
+
+    // ── Tasks ───────────────────────────────────────────────
+    // A private kind (live.clip) takes tasks, rounds and entries from its submitter only (kinds.js `submitter`).
+    const submitterOnly = (req, res, kindId) => {
+        if (!isPrivateKind(kindId)) return true;
+        const want = (kindById(kindId) || {}).submitter;
+        if (req.principal && req.principal.requester === want) return true;
+        problem(res, 403, 'bench.private_kind', `Only ${want} submits to ${kindId}.`);
+        return false;
+    };
+
+    r.get('/kinds/:kindId/policies', principal.requireCapability('bench.entry.create'), async (req, res) => {
+        const kindId = String(req.params.kindId || '');
+        if (kindId !== 'live.clip') return problem(res, 404, 'bench.kind_not_found', 'Policy results are kept for live.clip.');
+        if (!submitterOnly(req, res, kindId)) return undefined;
+        res.set('Cache-Control', 'private, no-store');
+        return res.json({ kind_id: kindId, policies: await bench.clipPolicies() });
+    });
+
+    r.post('/kinds/:kindId/tasks', actor('bench.task.create'), async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        if (!submitterOnly(req, res, String(req.params.kindId || ''))) return undefined;
+        const owner = creatorOf(req);
+        const out = await bench.createTask({
+            kindId: String(req.params.kindId || ''),
+            prompt: b.prompt,
+            taskClass: b.task_class == null ? null : String(b.task_class),
+            public: Boolean(b.public),
+            subject: owner,
+        });
+        if (!out.ok) return problem(res, out.status || 400, out.code || 'bench.invalid', out.message || 'invalid task');
+        res.set('Location', `/api/v1/tasks/${out.task.id}`);
+        return res.status(201).json({ task: out.task });
+    });
+
+    r.get('/tasks/:id', async (req, res) => {
+        const task = await bench.getTask(String(req.params.id || ''));
+        if (!task) return problem(res, 404, 'bench.task_not_found', 'No such task.');
+        res.set('Cache-Control', 'public, max-age=60');
+        return res.json({ task });
+    });
+
+    // ── Rounds ──────────────────────────────────────────────
+    r.post('/tasks/:id/rounds', actor('bench.round.create'), async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const task = await bench.getTask(String(req.params.id || ''));
+        if (task && !submitterOnly(req, res, task.kind_id)) return undefined;
+        const owner = creatorOf(req);
+        try {
+            const out = await bench.createRound({
+                taskId: String(req.params.id || ''),
+                offers: b.offers,
+                seed: b.seed,
+                subject: owner,
+            });
+            if (!out.ok) return problem(res, out.status || 400, out.code || 'bench.invalid', out.message || 'invalid round');
+            res.set('Location', `/api/v1/rounds/${out.round.id}`);
+            return res.status(201).json({ round: out.round });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.get('/rounds/:id', async (req, res) => {
+        try {
+            const round = await bench.getRound(String(req.params.id || ''), { viewerSubject: subjectOf(req) });
+            if (!round) return problem(res, 404, 'bench.round_not_found', 'No such round.');
+            // A private kind's round is for its submitter and for the people who voted on it.
+            if (isPrivateKind(round.kind_id) && round.blind && !(req.principal && req.principal.requester === (kindById(round.kind_id) || {}).submitter)) {
+                return problem(res, 404, 'bench.round_not_found', 'No such round.');
+            }
+            res.set('Cache-Control', round.blind || isPrivateKind(round.kind_id) ? 'private, no-store' : 'public, max-age=60');
+            return res.json({ round });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.post('/rounds/:id/entries', principal.requireCapability('bench.entry.create'), async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        try {
+            const round = await bench.getRound(String(req.params.id || ''), { viewerSubject: null });
+            if (round && !submitterOnly(req, res, round.kind_id)) return undefined;
+            const entry = await bench.addEntry({
+                roundId: String(req.params.id || ''),
+                provider: b.provider,
+                model: b.model,
+                route: b.route,
+                payload: b.payload,
+                costUsd: b.cost_usd,
+                ms: b.ms,
+                tokens: b.tokens,
+                error: b.error,
+                uiCheck: b.ui_check,
+                runId: b.run_id,
+                // A live.clip names the recording it was cut from; the submitter's token says which ones it may.
+                claims: (req.principal && req.principal.claims) || null,
+            });
+            res.set('Location', `/api/v1/rounds/${String(req.params.id)}`);
+            return res.status(201).json({ entry });
+        } catch (err) { return failed(res, err); }
+    });
+
+    // ── Judgements ──────────────────────────────────────────
+    /**
+     * The next pair to judge. A signed-in person gets the next round they have not judged and did not start;
+     * an anonymous voter gets one too, through Bench's own signed cookie or through the X-OV-Voter header a
+     * relaying service sends. The anonymous answer is 204 when there is nothing left to judge.
+     */
+    r.get('/judgements/next', async (req, res) => {
+        try {
+            const kind = String(req.query.kind || '');
+            const person = subjectOf(req);
+            if (person) {
+                const pair = await bench.nextJudgement({ kind, subject: person, random: ctx.random || Math.random });
+                res.set('Cache-Control', 'private, no-store');
+                if (!pair) return res.json({ pair: null, detail: 'There is no round waiting for your judgement right now.' });
+                return res.json(pair);
+            }
+            if (!ctx.anon.enabled()) {
+                return problem(res, 403, 'bench.anon_disabled', 'Voting without signing in is off at the moment.');
+            }
+            const anon = ctx.anon.resolve(req, req.principal);
+            if (!anon) {
+                return problem(res, 401, 'bench.sign_in_required', 'Sign in at bench.openvibe.services, or send a service token that may relay anonymous votes.');
+            }
+            const kindRow = kindById(kind);
+            if (!kindRow || kindRow.judge !== 'human_pairwise' || kindRow.private) {
+                return problem(res, 403, 'bench.anon_kind_not_allowed', 'Only public pairwise kinds can be judged without signing in.');
+            }
+            if (anon.minted) ctx.anon.setCookie(res, anon.opaque);
+            const pair = await bench.nextJudgement({
+                kind, subject: anon.subject, random: ctx.random || Math.random,
+                extraCreators: anon.creator ? [anon.creator] : [],
+            });
+            res.set('Cache-Control', 'private, no-store');
+            if (!pair) return res.status(204).end();
+            return res.json(pair);
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.post('/rounds/:id/judgements', async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const roundId = String(req.params.id || '');
+        // A first-party service may relay an anonymous voter: its own service token, and the voter id it derived
+        // from its own cookie in the X-OV-Voter header. Only a service on the allow-list may do this.
+        let relayed = null;
+        try {
+            const maybe = ctx.anon.resolve(req, req.principal, { mint: false });
+            if (maybe && maybe.source === 'relay') relayed = maybe;
+        } catch (err) { return failed(res, err); }
+        if (relayed) {
+            if (!ctx.anon.enabled()) {
+                return problem(res, 403, 'bench.anon_disabled', 'Voting without signing in is off at the moment.');
+            }
+            try {
+                const round = await bench.getRound(roundId, { viewerSubject: null });
+                if (!round) return problem(res, 404, 'bench.round_not_found', 'No such round.');
+                const row = kindById(round.kind_id);
+                if (!row || row.judge !== 'human_pairwise' || row.private) {
+                    return problem(res, 403, 'bench.anon_kind_not_allowed', 'Only public pairwise kinds can be judged without signing in.');
+                }
+                const out = await bench.castJudgement({
+                    roundId, kindId: round.kind_id, judge: 'human_pairwise',
+                    judgeName: b.judge_name, judgeVersion: b.judge_version,
+                    pair: b.pair, outcome: b.outcome, score: b.score, voteCounts: b.vote_counts,
+                    subject: relayed.subject, voterKind: 'anon',
+                    extraCreators: relayed.creator ? [relayed.creator] : [],
+                    quota: () => ctx.anon.takeQuota(relayed),
+                });
+                res.set('Cache-Control', 'private, no-store');
+                return res.status(201).json(out);
+            } catch (err) { return failed(res, err); }
+        }
+        let judge = typeof b.judge === 'string' && b.judge ? b.judge : null;
+        if (!judge) {
+            const round = await bench.getRound(roundId, { viewerSubject: null });
+            if (!round) return problem(res, 404, 'bench.round_not_found', 'No such round.');
+            judge = (kindById(round.kind_id) || {}).judge || null;
+        }
+        if (!judge) return invalid(res, 'judge is required');
+        const isHuman = judge === 'human_pairwise' || judge === 'rubric';
+        const guard = isHuman ? requirePerson : principal.requireCapability('bench.judgement.cast');
+        return guard(req, res, async () => {
+            try {
+                const round = await bench.getRound(roundId, { viewerSubject: null });
+                if (!round) return problem(res, 404, 'bench.round_not_found', 'No such round.');
+                if (round.kind_id === 'games.match' && (judge !== 'game_outcome' || req.principal.requester !== 'service:games')) {
+                    return problem(res, 403, 'bench.games_service_required', 'Only the Games service may record match outcomes.');
+                }
+                const subject = isHuman ? subjectOf(req) : req.principal.requester;
+                const out = await bench.castJudgement({
+                    roundId, kindId: b.kind_id, judge,
+                    judgeName: b.judge_name, judgeVersion: b.judge_version,
+                    pair: b.pair, outcome: b.outcome, score: b.score, voteCounts: b.vote_counts, subject,
+                });
+                res.set('Cache-Control', 'private, no-store');
+                return res.status(201).json(out);
+            } catch (err) { return failed(res, err); }
+        });
+    });
+
+    // ── Boards, models, datasets ────────────────────────────
+    const ratingsCors = (_req, res, next) => {
+        res.set('Access-Control-Allow-Origin', '*').set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.set('Access-Control-Allow-Headers', 'Accept, Content-Type, traceparent, X-OpenVibe-Request-Id');
+        next();
+    };
+    r.options('/ratings/:kindId', ratingsCors, (_req, res) => res.status(204).end());
+    r.get('/ratings/:kindId', ratingsCors, async (req, res) => {
+        try {
+            if (req.query.category !== undefined && typeof req.query.category !== 'string') return invalid(res, 'Use one task category.');
+            const board = await bench.ratings(String(req.params.kindId || ''), { category: req.query.category || 'all' });
+            if (!board) return problem(res, 404, 'bench.kind_not_found', 'No public rating for this kind.');
+            res.set('Cache-Control', 'public, max-age=60');
+            return res.json({ board });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.get('/boards/:kindId', async (req, res) => {
+        try {
+            const kindId = String(req.params.kindId || '');
+            const type = typeof req.query.type === 'string' && req.query.type ? req.query.type : null;
+            const board = await bench.board(kindId, {
+                type,
+                category: typeof req.query.category === 'string' ? req.query.category : 'all',
+                period: typeof req.query.period === 'string' ? req.query.period : 'all',
+                // 'people' shows the signed-in votes alone, 'anon' the anonymous ones alone.
+                voters: typeof req.query.voters === 'string' ? req.query.voters : null,
+            });
+            if (!board) {
+                const kind = await bench.getKind(kindId);
+                if (kind && kind.schema && kind.schema.adult === true) return problem(res, 422, 'bench.board_type_unsupported', 'The 18+ board is willingness only: use type=willing, or omit type.');
+                return problem(res, 404, 'bench.kind_not_found', 'No such kind.');
+            }
+            res.set('Cache-Control', 'public, max-age=30');
+            return res.json({ board });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.get('/models/:model', async (req, res) => {
+        try {
+            const out = await bench.modelSummary(String(req.params.model || ''));
+            if (!out) return problem(res, 404, 'bench.model_not_found', 'No such model.');
+            res.set('Cache-Control', 'public, max-age=60');
+            return res.json(out);
+        } catch (err) { return failed(res, err); }
+    });
+
+    // The open data for the benchmark registry (B11): public benchmarks, their visible tasks and every run under
+    // them. Private and unlisted rows are never read here, and no person id appears in a line.
+    r.get('/datasets/benchmarks.jsonl', async (req, res) => {
+        try {
+            const text = await registry.publicDatasetLines();
+            res.set('Cache-Control', 'public, max-age=60');
+            res.set('Content-Disposition', 'attachment; filename="bench-benchmarks.jsonl"');
+            return res.type('application/x-ndjson').send(text);
+        } catch (err) { return failed(res, err); }
+    });
+
+    // The open vote dump (stage B9): every human vote, no voter ids. It comes before the kind dataset route,
+    // because '/datasets/votes.jsonl' would otherwise be read as the kind 'votes'.
+    r.get('/datasets/votes.jsonl', async (req, res) => {
+        try {
+            const result = await boardLib.board(ctx);
+            const text = boardLib.dumpJsonl(result);
+            res.set('Cache-Control', 'public, max-age=60');
+            res.set('Content-Disposition', 'attachment; filename="bench-votes.jsonl"');
+            res.set('X-Bench-Votes', String(result.votes.length));
+            return res.type('application/x-ndjson').send(text);
+        } catch (err) { return failed(res, err); }
+    });
+
+    // The board the votes make: raw and style controlled, with intervals and bands.
+    r.get('/ratings', async (req, res) => {
+        try {
+            const result = await boardLib.board(ctx);
+            res.set('Cache-Control', 'public, max-age=60');
+            return res.json({ board: boardLib.boardView(result) });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.get('/datasets/:kindId.jsonl', async (req, res) => {
+        try {
+            const text = await bench.datasetJsonl(String(req.params.kindId || ''));
+            if (text == null) return problem(res, 404, 'bench.kind_not_found', 'No such kind.');
+            res.set('Cache-Control', 'public, max-age=60');
+            res.set('Content-Disposition', `attachment; filename="${String(req.params.kindId || 'bench')}-dataset.jsonl"`);
+            return res.type('application/x-ndjson').send(text);
+        } catch (err) { return failed(res, err); }
+    });
+
+    // ── Private evals ───────────────────────────────────────
+    r.post('/evals', actor('bench.eval.manage'), async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const owner = subjectOf(req) || req.principal.requester;
+        const out = await bench.createEval({ owner, kindId: b.kind_id, name: b.name, testSuite: b.test_suite });
+        if (!out.ok) return problem(res, out.status || 400, out.code || 'bench.invalid', out.message || 'invalid eval');
+        res.set('Location', `/api/v1/evals/${out.eval.id}`);
+        return res.status(201).json({ eval: out.eval });
+    });
+
+    r.get('/evals/:id', actor('bench.eval.manage'), async (req, res) => {
+        const owner = subjectOf(req) || req.principal.requester;
+        const ev = await bench.getEval(String(req.params.id || ''), { owner });
+        if (!ev) return problem(res, 404, 'bench.eval_not_found', 'No such eval (or it is not yours).');
+        res.set('Cache-Control', 'private, no-store');
+        return res.json({ eval: ev });
+    });
+
+    r.post('/evals/:id/run', actor('bench.eval.manage'), async (req, res) => {
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const owner = subjectOf(req) || req.principal.requester;
+        try {
+            const run = await bench.runEval({ evalId: String(req.params.id || ''), offers: b.offers, owner });
+            res.set('Cache-Control', 'private, no-store');
+            return res.status(202).json({ run });
+        } catch (err) { return failed(res, err); }
+    });
+
+    r.get('/evals/:id/results', actor('bench.eval.manage'), async (req, res) => {
+        const owner = subjectOf(req) || req.principal.requester;
+        const out = await bench.evalResults(String(req.params.id || ''), { owner });
+        if (!out) return problem(res, 404, 'bench.eval_not_found', 'No such eval (or it is not yours).');
+        res.set('Cache-Control', 'private, no-store');
+        return res.json(out);
+    });
+
+    // ── Matches and the factor boards (compare-arena-ecosystem.md, Contracts 0.422.0) ──
+    // A service records a match it ran (the Arena's race, a Codes race, a check job, a game); the boards rate model
+    // and harness apart from every match of a task kind (server/rating/factors.js), cached a few minutes.
+    r.post('/matches', principal.requireCapability('bench.judgement.cast'), async (req, res) => {
+        const body = { ...(req.body || {}) };
+        if (!body.id) body.id = `mat_${ids.ulid(Date.now())}`;
+        const checked = require('openvibe-contracts').validate('bench.match@1', body);
+        if (!checked.valid) return invalid(res, `not a bench.match@1: ${checked.errors.slice(0, 3).map((e) => `${e.path} ${e.message}`).join('; ')}`);
+        try {
+            const out = await bench.recordMatch(body, { recordedBy: req.principal.requester });
+            return res.status(out.created ? 201 : 200).json(out);
+        } catch (err) { return failed(res, err); }
+    });
+
+    const factorCache = new Map();
+    r.get('/factors', async (req, res) => {
+        const taskKind = String(req.query.task_kind || '');
+        if (!['chat', 'code', 'design', 'image', 'speech', 'search', 'computer', 'game'].includes(taskKind)) return invalid(res, 'task_kind must be chat, code, design, image, speech, search, computer or game');
+        const category = req.query.category ? String(req.query.category).slice(0, 64) : null;
+        const days = [7, 30, 90, 365].includes(Number(req.query.days)) ? Number(req.query.days) : 90;
+        const key = `${taskKind}|${category || ''}|${days}`;
+        const hit = factorCache.get(key);
+        if (hit && hit.until > Date.now()) { res.set('Cache-Control', 'public, max-age=120'); return res.json(hit.value); }
+        const since = new Date(Date.now() - days * 86400000).toISOString();
+        const matches = await bench.matchesFor({ taskKind, category, since });
+        const { gamesOf, COVARIATES } = require('../rating/match-games');
+        const games = gamesOf(matches);
+        const fit = require('../rating/factors').fitFactors(games, { covariates: COVARIATES, bootstrap: games.length > 20000 ? 60 : 150 });
+        const value = { task_kind: taskKind, category, days, matches: matches.length, games: games.length, style_control: true, ...fit };
+        factorCache.set(key, { until: Date.now() + 5 * 60_000, value });
+        if (factorCache.size > 200) factorCache.delete(factorCache.keys().next().value);
+        res.set('Cache-Control', 'public, max-age=120');
+        return res.json(value);
+    });
+
+    return r;
+}
+
+module.exports = { createApi };

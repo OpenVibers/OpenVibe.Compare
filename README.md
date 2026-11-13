@@ -9,6 +9,19 @@ Pages: `/`, `/comparisons/:slug`, `/things/:id` (URI-encoded identity), `/comput
 
 **Bench's API is served here too** (plan §X step 1, 11-13): every `/api/v1/` path Compare does not answer itself (`kinds`, `benchmarks`, `ratings`, `boards`, `runs`, `models` …) goes to OpenVibe.Bench at the edge (`deploy/nginx/openvibe.compare.conf`), so `https://openvibe.compare/api/v1/kinds` is Bench's `/api/v1/kinds`. Compare's own `/api/v1/compute` and `/api/v1/comparisons` stay Compare's.
 
+**Bench lives here now** (plan §X step 2, 11-13). Bench's code is `server/bench` (moved with `git subtree`, so its
+history is kept; `server/bench/test` runs in `npm test`). With `BENCH_ENV_FILE` set (production: `/etc/openvibe/bench.env`),
+Compare's own process mounts Bench's app behind Compare's routes and runs Bench's jobs, publisher and Events subscriptions,
+against Bench's same database with Bench's own role (`server/bench-mount.js`); that file is parsed on its own, so Bench's
+`DATABASE_URL`, `PORT` and OAuth client never collide with Compare's. A request for Bench's own host
+(`bench.openvibe.services`) is Bench's whole. Without `BENCH_ENV_FILE` Compare runs alone, as before.
+
+The cutover (each step alone, each undone alone): (b) this code, deployed with `BENCH_ENV_FILE` unset, changes nothing;
+(c) set `Environment=BENCH_ENV_FILE=/etc/openvibe/bench.env` on `openvibe-compare.service`, point both vhosts' Bench
+upstream (`127.0.0.1:5230`) at Compare's `127.0.0.1:5280`, then stop and disable `openvibe-bench.socket` and
+`openvibe-bench.service` (kept installed for one release window as the rollback); (d) only then the data move (`ov_bench`
+into Compare's own database or schema: expand, copy, verify, contract after the 7-day window).
+
 Launch: Host register-compare.py registers port 5280 with a lifecycle override until the separate Contracts manifest is released. Use merge-deploy.sh, then ov-vhost-install for deploy/nginx/openvibe.compare.conf. No database or service credentials are required.
 
 <!-- versions:start -->
