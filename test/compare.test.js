@@ -131,3 +131,15 @@ test('the sitemap, robots and llms.txt name the Compare AI pages',async()=>{
   const llms=await (await fetch(base+'/llms.txt')).text();assert.match(llms,/https:\/\/openvibe\.compare\/ai/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/leaderboard/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/models\/maker%2Falpha/);
  }finally{await new Promise(r=>server.close(r));}
 });
+
+test('the public AI pages link to Bench\'s owner page, so a person finds their own evaluations (A16)',async()=>{
+ const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
+ try {
+  const paths=['/ai','/ai/leaderboard','/ai/models/maker%2Falpha','/ai/compare/maker%2Falpha-vs-maker%2Fbeta','/ai/chat.arena',`/ai/${BMK}`];
+  for(const path of paths){
+   const html=await (await fetch(base+path)).text();
+   assert.match(html,/href="https:\/\/bench\.openvibe\.services\/benchmarks\/mine"/,path+' links to the owner page');
+   assert.match(html,/Your own benchmarks and runs/,path+' says what the link is');
+  }
+ }finally{await new Promise(r=>server.close(r));}
+});

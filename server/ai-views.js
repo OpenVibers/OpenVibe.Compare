@@ -30,6 +30,10 @@ const measuredWord = { ttft: metrics.format.ms, tps: metrics.format.tps, success
 const sourceHint = (s) => { const x = s && typeof s === 'object' ? s : { name: s }; return `Source: ${x.name || 'not listed'}${x.date ? ` · ${String(x.date).slice(0, 10)}` : ''}${x.sample_size != null ? ` · n = ${x.sample_size}` : ''}`; };
 const readData = (r) => (r && r.data != null ? r.data : null);
 const jsonData = (x) => JSON.stringify(x).replace(/</g, '\\u003c');
+// A16 (plan 2026-11-13 Y.1): Bench's owner page (/benchmarks/mine) is where a person's own benchmarks,
+// runs and share settings live. The public AI pages never linked to it, so someone who had evaluated a
+// model themselves had no way back from the comparison they were reading.
+const mineNote = (lead = 'Ran a benchmark yourself?') => `<p class="ai-fine">${esc(lead)} <a href="${BENCH}/benchmarks/mine">Your own benchmarks and runs</a> live on Bench (sign in).</p>`;
 
 // Bench's factor board covers these task kinds and windows; the page's form offers exactly these.
 const FACTOR_KINDS = [['code', 'Code'], ['chat', 'Chat'], ['design', 'Design'], ['image', 'Image'], ['speech', 'Speech'], ['search', 'Search'], ['computer', 'Computer use'], ['game', 'Games']];
@@ -224,6 +228,7 @@ function hub(data = {}) {
             { id: 'compare', label: 'Compare', html: (pairs.length ? kit.section({ title: 'Popular comparisons', body: `<ul class="ai-chips">${pairs.map(([a, b]) => `<li><a href="/ai/compare/${encodeURIComponent(a.id)}-vs-${encodeURIComponent(b.id)}">${esc(shortName(a.id))} vs ${esc(shortName(b.id))}</a></li>`).join('')}</ul>` }) : '') },
             { id: 'questions', label: 'Questions', html: kit.section({ title: 'Questions', body: faq.map(([q, a]) => kit.fold({ title: q, body: `<p>${esc(a)}</p>` })).join('') }) },
         ] })
+        + mineNote('Ran a benchmark yourself?')
         + scriptLd({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) })
         + scriptLd({ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe AI model leaderboard', url: 'https://openvibe.compare/ai', variableMeasured: ['Bench rating', 'Provider price', 'Provider reply time', 'Provider uptime', 'Measured first token time', 'Measured tokens per second', 'Measured success rate'], distribution: { '@type': 'DataDownload', contentUrl: 'https://openvibe.compare/api/v1/comparisons/ai-models', encodingFormat: 'application/json' } });
     return page(`AI model leaderboard — ${month}`, `${rows.length} AI models compared: ratings from blind votes, provider prices and measured speed.`, body, '/ai');
@@ -253,7 +258,8 @@ function leaderboard(data = {}) {
         + `<button class="ovk-btn ovk-btn--primary">Apply</button></form>`;
     const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>AI model leaderboard</h1>`
         + `<p class="ai-lede">${rows.length} ${rows.length === 1 ? 'model' : 'models'}${rows.filter(rated).length ? `, ${rows.filter(rated).length} rated` : ''}. Rated models first, then the rest with their prices.</p></header>`
-        + availabilityBlock(data) + form + board(rows, { full: true }) + measuredNote(data) + dataLinks();
+        + availabilityBlock(data) + form + board(rows, { full: true }) + measuredNote(data) + dataLinks()
+        + mineNote('Ran a benchmark yourself?');
     return page('AI model leaderboard', 'Every AI model with its rating, provider prices and measured speed; filter and sort.', body, '/ai/leaderboard', [{ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe AI model leaderboard', url: 'https://openvibe.compare/ai/leaderboard' }]);
 }
 
@@ -350,7 +356,8 @@ function model(data = {}) {
         + kit.section({ title: 'Providers', count: offers.length, body: providerTable(offers) })
         + kit.section({ title: 'Measured on real traffic', count: self.measured ? 3 : null, body: measuredTable })
         + kit.section({ title: 'Task ratings', count: tasks.length || null, body: taskTable + benchmarks })
-        + `<aside class="ai-try"><a class="ovk-btn ovk-btn--primary" href="https://openvibe.chat/vibe?models=${encodeURIComponent(id)}">Try it in Chat</a><a class="ovk-btn ovk-btn--quiet" href="https://openvibe.exchange/models/${encodeURIComponent(id)}">Use it from code</a></aside>`;
+        + `<aside class="ai-try"><a class="ovk-btn ovk-btn--primary" href="https://openvibe.chat/vibe?models=${encodeURIComponent(id)}">Try it in Chat</a><a class="ovk-btn ovk-btn--quiet" href="https://openvibe.exchange/models/${encodeURIComponent(id)}">Use it from code</a></aside>`
+        + mineNote('Ran this model yourself?');
     return page(`${shortName(id)} — AI model`, `${id}: rating, prices across providers and measured speed.`, body, idPath(id), [{ '@context': 'https://schema.org', '@type': 'Product', name: id, brand: maker || 'Unknown maker', url: `https://openvibe.compare${idPath(id)}` }]);
 }
 
@@ -375,7 +382,8 @@ function compare(data = {}) {
         + `<label class="ai-filter"><span>Second model</span><input name="b" list="ai-models" value="${esc(models[1] && models[1].id || '')}" required></label><button class="ovk-btn ovk-btn--primary">Compare</button>${list}</form>`;
     const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>${two ? `${esc(shortName(models[0].id))} vs ${esc(shortName(models[1].id))}` : 'Compare AI models'}</h1>`
         + `${two ? '' : '<p class="ai-lede">Choose two models to compare: their ratings, prices and measured speed side by side.</p>'}</header>`
-        + availabilityBlock(data) + (cards ? `<div class="ai-vs">${cards}</div>` : '') + form + measuredNote(data);
+        + availabilityBlock(data) + (cards ? `<div class="ai-vs">${cards}</div>` : '') + form + measuredNote(data)
+        + mineNote('Compared them yourself?');
     return page(two ? `${shortName(models[0].id)} vs ${shortName(models[1].id)}` : 'Compare AI models', 'Compare AI models side by side: ratings, prices and measured speed.', body, '/ai/compare');
 }
 
@@ -553,7 +561,8 @@ function agentCompare(data, pair) {
         + `</section>`
         + form
         + `<p class="ai-fine">The split comes from OpenVibe.Bench's ${esc(KIND_NAME[pair.task_kind] || pair.task_kind || 'code')} fit over ${esc(String(pair.days || 365))} days (${esc(Number(pair.matches || 0).toLocaleString('en-US'))} matches).${pair.method ? ` ${esc(pair.method)}.` : ''} <a href="/ai/harnesses?task_kind=${encodeURIComponent(pair.task_kind || 'code')}&days=${encodeURIComponent(String(pair.days || 365))}">Every harness effect</a> · <a href="/ai/matrix?task_kind=${encodeURIComponent(pair.task_kind || 'code')}&days=${encodeURIComponent(String(pair.days || 365))}">The matrix</a>.</p>`
-        + `<script type="application/json" id="ai-gap-data">${jsonData(split)}</script><script src="/ai-factors.js" defer></script>`;
+        + `<script type="application/json" id="ai-gap-data">${jsonData(split)}</script><script src="/ai-factors.js" defer></script>`
+        + mineNote('Compared them yourself?');
     return page(`${agentSlug(a)} vs ${agentSlug(b)}`, `${agentSlug(a)} vs ${agentSlug(b)}: the score gap split into model, harness and interaction.`, body, canonical, [{ '@context': 'https://schema.org', '@type': 'Dataset', name: `${agentSlug(a)} vs ${agentSlug(b)}`, url: `https://openvibe.compare${canonical}` }]);
 }
 
@@ -726,7 +735,8 @@ function boardPage(data = {}) {
         + `<section aria-label="${esc(TABS.find((t) => t.key === tab)?.label || 'Board')}">${content}</section>`
         + (registryRows.length ? kit.section({ title: 'Verified runs on this task kind', count: registryRows.length, body: (registryRows.length > 1 ? scoreCostChart(registryRows.map((r) => ({ model: r.model, score: r.score, cost_usd: r.cost, ms: r.speed, runs: r.runs, last_run: r.last_run }))) : '') + registryTable }) : '')
         + kit.section({ title: 'Latest runs', count: latestRows.length, body: lastRunTable })
-        + `<p class="ai-fine">Download the <a href="${BENCH}/api/v1/datasets/${encodeURIComponent(kindId)}.jsonl">dataset JSONL</a> from Bench.</p>`;
+        + `<p class="ai-fine">Download the <a href="${BENCH}/api/v1/datasets/${encodeURIComponent(kindId)}.jsonl">dataset JSONL</a> from Bench.</p>`
+        + mineNote('Ran this task kind yourself?');
     return page(`${name}: AI`, `${name}: which AI does it best, what it costs and how fast it is.`, body, `/ai/${encodeURIComponent(kindId)}`);
 }
 
@@ -774,7 +784,8 @@ function benchmarkPage(data = {}) {
         + kit.stats([[entries.length, entries.length === 1 ? 'model ranked' : 'models ranked'], [latestRows.length, 'latest runs'], [tasks.length, tasks.length === 1 ? 'task' : 'tasks'], [last ? dayTime(last) : 'No runs yet', 'last run']], { label: `${meta.title} in numbers` })
         + chart + leaderboardTable
         + kit.section({ title: 'Latest runs', count: latestRows.length, body: latestTable })
-        + `<p class="ai-fine"><a href="/ai/method">How the runs are judged</a> · <a href="/ai/compare?models=${entries.slice(0, 3).map((e) => encodeURIComponent(e.model)).join(',')}">Compare the leaders</a> · <a href="${BENCH}/api/v1/datasets/benchmarks.jsonl">Bench's open data</a></p>`;
+        + `<p class="ai-fine"><a href="/ai/method">How the runs are judged</a> · <a href="/ai/compare?models=${entries.slice(0, 3).map((e) => encodeURIComponent(e.model)).join(',')}">Compare the leaders</a> · <a href="${BENCH}/api/v1/datasets/benchmarks.jsonl">Bench's open data</a></p>`
+        + mineNote('Ran this benchmark yourself?');
     return page(`${meta.title}: AI benchmark`, `${meta.title}: verified AI results, cost and speed from OpenVibe.Bench.`, body, `/ai/${encodeURIComponent(meta.id)}`);
 }
 
