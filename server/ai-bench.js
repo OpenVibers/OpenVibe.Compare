@@ -23,10 +23,22 @@ const BENCHMARK_RE = /^bmk_[0-9A-HJKMNP-TV-Z]{26}$/;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:+\/~\-]{0,119}$/;
 const BOARD_TYPES = Object.freeze(['elo', 'pareto', 'cost']);
 const METRICS = Object.freeze(['score', 'value', 'speed', 'consistency', 'horizon']);
+const FACTOR_KINDS = Object.freeze(['chat', 'code', 'design', 'image', 'speech', 'search', 'computer', 'game']);
+const FACTOR_DAYS = Object.freeze([7, 30, 90, 365]);
 
 const isKindId = (value) => typeof value === 'string' && KIND_RE.test(value);
 const isBenchmarkId = (value) => typeof value === 'string' && BENCHMARK_RE.test(value);
 const isModelName = (value) => typeof value === 'string' && MODEL_RE.test(value);
+
+function normaliseFactorKind(value) {
+    const raw = Array.isArray(value) ? value[0] : value;
+    return FACTOR_KINDS.includes(raw) ? raw : 'code';
+}
+
+function normaliseFactorDays(value) {
+    const n = Number(Array.isArray(value) ? value[0] : value);
+    return FACTOR_DAYS.includes(n) ? n : 90;
+}
 
 function normaliseMetric(value) {
     const raw = Array.isArray(value) ? value[0] : value;
@@ -137,12 +149,25 @@ function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = co
         return read(models, `detail:${model}`, `/api/v1/models/${encodeURIComponent(model)}/summary`, `bench model detail (${model})`, 200);
     }
 
+    // Model and harness apart (bench.rating@1 1.1.0 factors): one fit per task kind, category and window.
+    async function factors({ taskKind = 'code', category = null, days = 90 } = {}) {
+        const kind = normaliseFactorKind(taskKind);
+        const span = normaliseFactorDays(days);
+        const cat = category ? String(category).slice(0, 64) : null;
+        const params = new URLSearchParams({ task_kind: kind, days: String(span) });
+        if (cat) params.set('category', cat);
+        const query = params.toString();
+        return read(results, `factors:${query}`, `/api/v1/factors?${query}`, `bench factors (${query})`, 500);
+    }
+
     return {
-        kinds, board, modelSummary, benchmarks, benchmark, overview, rankings, runs, modelDetail,
+        kinds, board, modelSummary, benchmarks, benchmark, overview, rankings, runs, modelDetail, factors,
         baseUrl, ttlMs: TTL_MS, isKindId, isBenchmarkId, isModelName, normaliseTab, normaliseMetric, normaliseLimit,
+        normaliseFactorKind, normaliseFactorDays,
     };
 }
 
 module.exports = {
-    createBenchClient, TTL_MS, BOARD_TYPES, METRICS, isKindId, isBenchmarkId, isModelName, normaliseTab, normaliseMetric, normaliseLimit,
+    createBenchClient, TTL_MS, BOARD_TYPES, METRICS, FACTOR_KINDS, FACTOR_DAYS,
+    isKindId, isBenchmarkId, isModelName, normaliseTab, normaliseMetric, normaliseLimit, normaliseFactorKind, normaliseFactorDays,
 };

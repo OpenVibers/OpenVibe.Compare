@@ -6,7 +6,7 @@
 const { createAiCatalogue } = require('./ai-catalogue');
 const { comparisonCatalogue } = require('./ai-market');
 const { findCatalogModel, makerOf } = require('./ai-join');
-const { createBenchClient, isKindId, isModelName, normaliseTab } = require('./ai-bench');
+const { createBenchClient, isKindId, isModelName, normaliseTab, normaliseFactorKind, normaliseFactorDays, FACTOR_KINDS } = require('./ai-bench');
 const { requestJson } = require('./ai-source');
 const { measuredRows, measuredOf } = require('./data');
 
@@ -106,6 +106,59 @@ function buildComparison({ kindsRead = null, boards = [], catalogue = null, perf
     return { rows, providers: catOffers, tasks, catalogue, availability, stale, measured_at: perfAt, updated_at: dates.sort().at(-1) || iso(now) };
 }
 
+// ── Model and harness, apart ──
+// Bench's factor fit (bench.rating@1 1.1.0 `factors`) is the only source that can say which half of an agent's
+// score is the model and which is the harness. Its numbers are kept as read; a missing fit is null, never zero.
+const factorList = (x) => (Array.isArray(x) ? x : []);
+const factorNumber = (x) => x == null || !Number.isFinite(Number(x)) ? null : Number(x);
+const agentLabel = (id) => String(id || '').replace(/^agent:/, '').replace(/#.*$/, '');
+const looksLikeAgent = (id) => String(id || '').includes('+');
+const round1 = (x) => factorNumber(x) == null ? null : Math.round(factorNumber(x) * 10) / 10;
+
+function normaliseFactors(read) {
+    const raw = read && read.data && typeof read.data === 'object' ? read.data : null;
+    if (!raw) return null;
+    const models = factorList(raw.models).map((m) => ({
+        model: String(m.model || ''), score: factorNumber(m.score), ci_lower: factorNumber(m.ci_lower), ci_upper: factorNumber(m.ci_upper), games: factorNumber(m.games),
+    })).filter((m) => m.model);
+    const harnesses = factorList(raw.harnesses).map((h) => ({
+        harness: String(h.harness || ''), effect: factorNumber(h.effect), ci_lower: factorNumber(h.ci_lower), ci_upper: factorNumber(h.ci_upper), games: factorNumber(h.games),
+    })).filter((h) => h.harness);
+    const agents = factorList(raw.agents).map((a) => {
+        const f = a.factors && typeof a.factors === 'object' ? a.factors : {};
+        const part = (p) => ({ score: factorNumber(p && p.score) });
+        return {
+            id: String(a.id || ''), model: String(a.model || ''), harness: String(a.harness || ''),
+            score: factorNumber(a.score), ci_lower: factorNumber(a.ci_lower), ci_upper: factorNumber(a.ci_upper),
+            factors: { model: part(f.model), harness: part(f.harness), interaction: part(f.interaction) },
+        };
+    }).filter((a) => a.id && a.model && a.harness);
+    return {
+        task_kind: raw.task_kind || null, category: raw.category || null, days: factorNumber(raw.days),
+        matches: factorNumber(raw.matches) || 0, games: factorNumber(raw.games) || 0, style_control: raw.style_control !== false,
+        models, harnesses, agents, method: typeof raw.method === 'string' ? raw.method : null,
+    };
+}
+
+function pairAgent(fit, side) {
+    const wanted = String(side || '');
+    if (!fit || !wanted) return null;
+    return fit.agents.find((a) => a.id === wanted || a.id === `agent:${wanted}` || agentLabel(a.id) === wanted || `${a.harness}+${a.model}` === wanted) || null;
+}
+
+/** The gap between two agents in one fit, split into its model, harness and interaction parts (Elo points). */
+function splitOf(fit, a, b, taskKind) {
+    const A = pairAgent(fit, a);
+    const B = pairAgent(fit, b);
+    if (!A || !B || A.score == null || B.score == null) return null;
+    const d = (part) => round1((A.factors[part].score == null ? 0 : A.factors[part].score) - (B.factors[part].score == null ? 0 : B.factors[part].score));
+    return {
+        task_kind: taskKind || fit.task_kind, days: fit.days, games: fit.games, matches: fit.matches, method: fit.method,
+        a: A, b: B, gap: round1(A.score - B.score),
+        parts: { model: d('model'), harness: d('harness'), interaction: d('interaction') },
+    };
+}
+
 function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new Date().toISOString(), ttl = TTL_MS, bench = null, catalogue = null } = {}) {
     const clock = typeof now === 'function' ? now : () => new Date().toISOString();
     const benchClient = bench || createBenchClient({ fetchImpl, log, now: () => Date.parse(clock()) || Date.now() });
@@ -182,8 +235,37 @@ function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new
     }
 
     async function compare(models = []) {
-        const data = await comparison();
-        return { models: models.map((id) => data.rows.find((x) => x.id === id) || { id, reason: 'No public model data.' }), options: data.rows.map((x) => x.id), availability: data.availability, stale: data.stale, measured_at: data.measured_at };
+        const [data, agentPair] = await Promise.all([
+            comparison(),
+            models.length === 2 ? agentSplit(models[0], models[1]) : Promise.resolve(null),
+        ]);
+        return { models: models.map((id) => data.rows.find((x) => x.id === id) || { id, reason: 'No public model data.' }), options: data.rows.map((x) => x.id), availability: data.availability, stale: data.stale, measured_at: data.measured_at, agentPair };
+    }
+
+    // The harness board and the matrix read the same fit; the pair page reads it only when both sides look like
+    // agents (`harness+model`). One failed first read stops the search: Bench is down, not merely missing a pair.
+    async function factorFit(taskKind, days) {
+        const read = await benchClient.factors({ taskKind, days });
+        return { fit: normaliseFactors(read), read };
+    }
+
+    async function factorBoard(query = {}) {
+        const taskKind = normaliseFactorKind(query.task_kind);
+        const days = normaliseFactorDays(query.days);
+        const { fit, read } = await factorFit(taskKind, days);
+        return { taskKind, days, fit, unavailable: !read, stale: read && read.stale ? read.at : null };
+    }
+
+    async function agentSplit(a, b) {
+        if (!looksLikeAgent(a) || !looksLikeAgent(b)) return null;
+        const first = await factorFit('code', 365);
+        if (!first.read) return null;
+        const direct = first.fit ? splitOf(first.fit, a, b, 'code') : null;
+        if (direct) return direct;
+        const rest = FACTOR_KINDS.filter((kind) => kind !== 'code');
+        const fits = await Promise.all(rest.map(async (kind) => ({ kind, ...(await factorFit(kind, 365)) })));
+        const found = fits.filter((x) => x.fit && pairAgent(x.fit, a) && pairAgent(x.fit, b)).sort((x, y) => (y.fit.games || 0) - (x.fit.games || 0))[0];
+        return found ? splitOf(found.fit, a, b, found.kind) : null;
     }
 
     async function leaderboard(query = {}) {
@@ -214,10 +296,10 @@ function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new
     }
 
     return {
-        comparison, kindBoard, benchmarkPage, method, feed, modelPage, compare, leaderboard,
+        comparison, kindBoard, benchmarkPage, method, feed, modelPage, compare, leaderboard, factorBoard, agentSplit,
         bench: benchClient, catalogue: catClient, readRows, ttlMs: ttl,
         isKindId: benchClient.isKindId, isBenchmarkId: benchClient.isBenchmarkId, isModelName: benchClient.isModelName, normaliseTab: benchClient.normaliseTab,
     };
 }
 
-module.exports = { createAi, buildComparison, measuredRow, TTL_MS, PERF_URL };
+module.exports = { createAi, buildComparison, measuredRow, normaliseFactors, splitOf, agentLabel, TTL_MS, PERF_URL };
