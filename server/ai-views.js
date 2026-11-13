@@ -29,6 +29,12 @@ const word = { ms: metrics.format.ms, tps: metrics.format.tps, rate: metrics.for
 const measuredWord = { ttft: metrics.format.ms, tps: metrics.format.tps, success: metrics.format.rate };
 const sourceHint = (s) => { const x = s && typeof s === 'object' ? s : { name: s }; return `Source: ${x.name || 'not listed'}${x.date ? ` · ${String(x.date).slice(0, 10)}` : ''}${x.sample_size != null ? ` · n = ${x.sample_size}` : ''}`; };
 const readData = (r) => (r && r.data != null ? r.data : null);
+const jsonData = (x) => JSON.stringify(x).replace(/</g, '\\u003c');
+
+// Bench's factor board covers these task kinds and windows; the page's form offers exactly these.
+const FACTOR_KINDS = [['code', 'Code'], ['chat', 'Chat'], ['design', 'Design'], ['image', 'Image'], ['speech', 'Speech'], ['search', 'Search'], ['computer', 'Computer use'], ['game', 'Games']];
+const FACTOR_DAYS = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '365 days']];
+const KIND_NAME = Object.fromEntries(FACTOR_KINDS);
 
 const HEAD = `<link rel="stylesheet" href="/ai-comparison.css"><link rel="stylesheet" href="/shared/kit-data.css"><link rel="stylesheet" href="/shared/showcase.css"><style>${marks.CSS}\n${PARTS_CSS}</style>`;
 function page(title, description, body, path, ld = []) {
@@ -209,6 +215,7 @@ function hub(data = {}) {
         + kit.stats([[ratedRows.length, 'rated'], [rows.length, 'models listed'], [providerNames.size, 'providers'], [measuredOffers.length, 'measured endpoints']], { label: 'The leaderboard in numbers' })
         + `</header>`
         + (pickList || pending.length ? kit.section({ title: 'Top picks', body: `${pickList ? `<ul class="ai-picks">${pickList}</ul>` : ''}${pending.length ? `<p class="ai-fine">Not enough data yet for ${esc(pending.join(', '))}.</p>` : ''}` }) : '')
+        + kit.section({ title: 'Harness and model, apart', body: `<p class="ai-fine">A coding agent is a harness driving a model, and the harness can move a score as much as the model. Bench fits the two apart, with an interval on each harness effect. Every agent number here names its harness.</p><ul class="ai-chips"><li><a href="/ai/harnesses">Harness effects</a></li><li><a href="/ai/matrix">Harness × model matrix</a></li><li><a href="/ai/method">How the fit works</a></li></ul>` })
         // A phone shows the parts below the top picks one at a time as tabs; every part stays in the HTML.
         + parts({ name: 'board', label: 'The leaderboard\'s parts', items: [
             { id: 'leaderboard', label: 'Leaderboard', count: chat.length, html: kit.section({ title: 'Leaderboard', count: chat.length, actions: [act('/ai/leaderboard', chat.length > 25 ? `All ${chat.length} models` : 'Filter and sort')], body: board(chat.slice(0, 25)) + (others ? `<p class="ai-fine">Chat models only. ${others} embedding and speech ${others === 1 ? 'model is' : 'models are'} in the <a href="/ai/leaderboard?type=all">full list</a>.</p>` : '') + dataLinks() + measuredNote(data) }) },
@@ -349,6 +356,7 @@ function model(data = {}) {
 
 // ── /ai/compare ──
 function compare(data = {}) {
+    if (data.agentPair) return agentCompare(data, data.agentPair);
     const models = data.models || [];
     const options = data.options || [];
     const two = models.length === 2;
@@ -369,6 +377,188 @@ function compare(data = {}) {
         + `${two ? '' : '<p class="ai-lede">Choose two models to compare: their ratings, prices and measured speed side by side.</p>'}</header>`
         + availabilityBlock(data) + (cards ? `<div class="ai-vs">${cards}</div>` : '') + form + measuredNote(data);
     return page(two ? `${shortName(models[0].id)} vs ${shortName(models[1].id)}` : 'Compare AI models', 'Compare AI models side by side: ratings, prices and measured speed.', body, '/ai/compare');
+}
+
+// ── Harness and model, apart (/ai/harnesses, /ai/matrix, an agent pair) ──
+const agentName = (a) => `<span class="ai-agent"><b>${esc(a.harness)}</b><span aria-hidden="true">+</span>${esc(a.model)}</span>`;
+const agentSlug = (a) => `${a.harness}+${a.model}`;
+const pairPath = (a, b) => {
+    const [x, y] = [agentSlug(a), agentSlug(b)].sort();
+    return `/ai/compare/${encodeURIComponent(x)}-vs-${encodeURIComponent(y)}`;
+};
+const eloText = (x) => value(x) == null ? '—' : String(Math.round(Number(x)));
+const pointsText = (x) => { const n = value(x); return n == null ? '—' : `${n > 0 ? '+' : ''}${Math.round(n * 10) / 10}`; };
+const agentScoreCell = (a) => {
+    const lo = value(a.ci_lower), hi = value(a.ci_upper);
+    const spread = lo != null && hi != null ? `${Math.round(lo)}–${Math.round(hi)}` : null;
+    return `<b>${eloText(a.score)}</b>${spread ? `<small>95% ${esc(spread)}</small>` : ''}`;
+};
+
+function factorForm(path, data = {}) {
+    const kinds = FACTOR_KINDS.map(([id, name]) => `<option value="${id}"${id === (data.taskKind || 'code') ? ' selected' : ''}>${esc(name)}</option>`).join('');
+    const days = FACTOR_DAYS.map(([n, name]) => `<option value="${n}"${n === Number(data.days || 90) ? ' selected' : ''}>${esc(name)}</option>`).join('');
+    return `<form class="ai-filters ai-factor-form" action="${esc(path)}" method="get"><label class="ai-filter"><span>Task kind</span><select name="task_kind">${kinds}</select></label><label class="ai-filter"><span>Window</span><select name="days">${days}</select></label><button class="ovk-btn ovk-btn--primary">Show</button></form>`;
+}
+
+function factorState(data = {}) {
+    if (data.unavailable) return `<p class="ai-note" role="status">OpenVibe.Bench did not answer its factor board. This page comes back when it answers; nothing is filled in.</p>`;
+    return data.stale ? benchState(data.stale) : '';
+}
+
+function factorMethod(fit, kind, days) {
+    const matches = fit && fit.matches ? `${Number(fit.matches).toLocaleString('en-US')} matches` : 'no matches yet';
+    return `<p class="ai-fine">${fit && fit.method ? `${esc(fit.method)}. ` : ''}Model and harness are fitted apart from every match of ${esc(KIND_NAME[kind] || kind)} in ${esc(String(days))} days (${esc(matches)}); the neutral harness <code>ov-bare</code> is the zero when it appears, otherwise the effects are centred on their average. <a href="${BENCH}/docs">Bench's method</a>.</p>`;
+}
+
+// One scale for every harness, so the strips compare by their position: zero is ov-bare when it anchored the fit.
+function stripScale(harnesses) {
+    const values = harnesses.flatMap((h) => [value(h.ci_lower), value(h.ci_upper), value(h.effect)]).filter((x) => x != null).concat([0]);
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const pad = Math.max(10, (hi - lo) * 0.06);
+    return { lo: lo - pad, hi: hi + pad };
+}
+function harnessStrip(h, scale) {
+    const lo = value(h.ci_lower), hi = value(h.ci_upper), effect = value(h.effect);
+    if (lo == null || hi == null || effect == null) return `<p class="ai-fine">Effect interval not reported for ${esc(h.harness)}.</p>`;
+    const span = scale.hi - scale.lo || 1;
+    const at = (x) => ((x - scale.lo) / span) * 100;
+    const label = `${h.harness}: ${pointsText(effect)} Elo effect, 95% interval ${Math.round(lo)} to ${Math.round(hi)}`;
+    return `<div class="ai-hstrip" role="img" aria-label="${esc(label)}" title="${esc(label)}" style="--zero:${at(0).toFixed(2)}%">`
+        + `<span class="ai-hstrip-range" style="left:${at(lo).toFixed(2)}%;width:${Math.max(0, at(hi) - at(lo)).toFixed(2)}%"></span>`
+        + `<span class="ai-hstrip-dot" style="left:${at(effect).toFixed(2)}%"></span></div>`;
+}
+
+// ── /ai/harnesses ──
+function harnesses(data = {}) {
+    const fit = data.fit || null;
+    const list = fit ? fit.harnesses || [] : [];
+    const agents = fit ? fit.agents || [] : [];
+    const top = [...agents].sort((a, b) => (value(b.score) == null ? -Infinity : value(b.score)) - (value(a.score) == null ? -Infinity : value(a.score)));
+    const byHarness = new Map();
+    for (const a of agents) {
+        if (!byHarness.has(a.harness)) byHarness.set(a.harness, []);
+        byHarness.get(a.harness).push(a);
+    }
+    const scale = stripScale(list);
+    const rows = list.map((h) => {
+        const own = (byHarness.get(h.harness) || []).sort((a, b) => (value(b.score) == null ? -Infinity : value(b.score)) - (value(a.score) == null ? -Infinity : value(a.score)));
+        const other = top.find((x) => !own.some((a) => a.id === x.id)) || null;
+        const agentLine = own.length
+            ? `<p class="ai-harness-agents">Agents: ${own.map((a) => {
+                const body = other ? `<a href="${pairPath(a, other)}">${agentName(a)}</a> ${agentScoreCell(a)}` : `${agentName(a)} ${agentScoreCell(a)}`;
+                return `<span class="ai-agent-item">${body}</span>`;
+            }).join(' · ')}</p>`
+            : `<p class="ai-harness-agents">No agent row names this harness yet.</p>`;
+        return `<li class="ai-harness"><div class="ai-harness-head"><b>${esc(h.harness)}</b><span class="ai-harness-effect">${esc(pointsText(h.effect))} Elo</span>`
+            + `<span class="ai-harness-meta">95% ${esc(value(h.ci_lower) == null ? '—' : `${Math.round(value(h.ci_lower))} to ${Math.round(value(h.ci_upper))}`)} · ${esc(value(h.games) == null ? 'games not reported' : `${Number(h.games).toLocaleString('en-US')} games`)}</span></div>`
+            + harnessStrip(h, scale) + agentLine + `</li>`;
+    }).join('');
+    const empty = !list.length;
+    const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>Harness effects</h1>`
+        + `<p class="ai-lede">What a harness adds, in Elo points, apart from the model it drives. Each strip is its 95% interval on one scale; zero is <code>ov-bare</code> when it anchored the fit, otherwise the average harness. Kind and window choose the fit.</p>`
+        + factorForm('/ai/harnesses', data) + `</header>`
+        + factorState(data)
+        + (!fit ? '' : kit.stats([[list.length, list.length === 1 ? 'harness' : 'harnesses'], [fit.games || 0, 'games'], [fit.matches || 0, 'matches'], [agents.length, agents.length === 1 ? 'agent' : 'agents'], [fit.models ? fit.models.length : 0, 'models']], { label: 'The harness board in numbers' }))
+        + (empty ? kit.empty({ icon: 'trophy', title: 'No harness board yet', text: 'No harness has enough matches yet: a harness shows after it has run against others on the same tasks.' })
+            : kit.section({ title: 'The harness board', count: list.length, body: `<ol class="ai-harness-board">${rows}</ol>${agents.length ? `<p class="ai-fine">An agent is named harness+model. <a href="/ai/matrix?task_kind=${encodeURIComponent(data.taskKind || 'code')}&days=${encodeURIComponent(String(data.days || 90))}">See every harness against every model</a>.</p>` : ''}` }))
+        + (fit ? factorMethod(fit, data.taskKind || 'code', data.days || 90) : '');
+    return page('Harness effects — AI', 'Each harness\'s effect apart from its model, with its 95% interval and games, from OpenVibe.Bench.', body, '/ai/harnesses', [{ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe harness effects', url: 'https://openvibe.compare/ai/harnesses' }]);
+}
+
+// ── /ai/matrix ──
+function matrix(data = {}) {
+    const fit = data.fit || null;
+    const harnessList = fit ? (fit.harnesses || []) : [];
+    const agents = fit ? fit.agents || [] : [];
+    const models = fit ? [...(fit.models || [])].sort((a, b) => (value(b.score) == null ? -Infinity : value(b.score)) - (value(a.score) == null ? -Infinity : value(a.score))) : [];
+    const shownModels = models.slice(0, 8);
+    const shownHarnesses = harnessList.slice(0, 12);
+    const cellOf = new Map(agents.map((a) => [`${a.harness}\u0000${a.model}`, a]));
+    const bestOf = new Map();
+    for (const h of shownHarnesses) for (const m of shownModels) {
+        const a = cellOf.get(`${h.harness}\u0000${m.model}`);
+        if (a && (bestOf.get(m.model) == null || (value(a.score) || -Infinity) > (value(bestOf.get(m.model).score) || -Infinity))) bestOf.set(m.model, a);
+    }
+    const tableRows = shownHarnesses.map((h) => {
+        const row = { harness: `<b>${esc(h.harness)}</b><small>${esc(pointsText(h.effect))} Elo · ${esc(value(h.games) == null ? 'games not reported' : `${Number(h.games).toLocaleString('en-US')} games`)}</small>` };
+        for (const m of shownModels) {
+            const a = cellOf.get(`${h.harness}\u0000${m.model}`);
+            if (!a) { row[`m:${m.model}`] = quiet('not run'); continue; }
+            const lo = value(a.ci_lower), hi = value(a.ci_upper);
+            const interval = lo != null && hi != null ? `95% interval ${Math.round(lo)}–${Math.round(hi)}` : 'interval not reported';
+            const best = bestOf.get(m.model) === a;
+            row[`m:${m.model}`] = `<span class="ai-cell" title="${esc(`${a.harness}+${a.model} · ${interval}`)}"><b>${esc(eloText(a.score))}</b><small>${lo != null && hi != null ? `± ${Math.round((hi - lo) / 2)}` : '—'}</small>${best ? ` ${kit.badge('best pair', 'accent')}` : ''}</span>`;
+        }
+        return row;
+    });
+    const columns = [{ key: 'harness', label: 'Harness', primary: true, html: true }].concat(shownModels.map((m) => ({ key: `m:${m.model}`, label: m.model, html: true })));
+    const notable = agents.filter((a) => Math.abs(value(a.factors.interaction.score) || 0) > 30)
+        .sort((a, b) => Math.abs(value(b.factors.interaction.score) || 0) - Math.abs(value(a.factors.interaction.score) || 0));
+    const named = notable.slice(0, 8).map((a) => {
+        const gain = value(a.factors.interaction.score) || 0;
+        return `<b>${esc(a.harness)}</b> ${gain > 0 ? 'gains' : 'loses'} ${esc(Math.abs(Math.round(gain)))} points with ${esc(a.model)}`;
+    }).join('; ');
+    const interactionLine = notable.length
+        ? `<p class="ai-interactions"><b>Interactions over 30 points:</b> ${named}${notable.length > 8 ? `; and ${notable.length - 8} more` : ''}.</p>`
+        : `<p class="ai-interactions ai-fine">No interaction is over 30 points: in this fit every harness adds about the same with every model.</p>`;
+    const hasCells = shownModels.length > 0 && shownHarnesses.length > 0 && agents.length > 0;
+    const empty = !hasCells;
+    const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>Harness × model</h1>`
+        + `<p class="ai-lede">Every pair is an agent: one harness driving one model. A cell is that agent's score with its 95% interval in the tooltip; “not run” means no match has joined the two yet. The best pair for each model is marked, and interactions over 30 points are named below the table.</p>`
+        + factorForm('/ai/matrix', data) + `</header>`
+        + factorState(data)
+        + (!fit ? '' : kit.stats([[shownHarnesses.length, 'harnesses'], [shownModels.length, 'models'], [agents.length, agents.length === 1 ? 'agent' : 'agents'], [fit.games || 0, 'games']], { label: 'The matrix in numbers' }))
+        + (empty ? kit.empty({ icon: 'trophy', title: 'No agent yet', text: 'No harness × model pair has run yet: a cell fills when an agent has run on that harness and model on the same tasks.' })
+            : kit.section({ title: 'The matrix', count: agents.length, body: kit.table({ caption: `Score by harness and model · ${KIND_NAME[data.taskKind] || data.taskKind || 'code'} · ${data.days || 90} days`, columns, rows: tableRows, label: 'Harness by model' }) + interactionLine }))
+        + (models.length > shownModels.length ? `<p class="ai-fine">The ${shownModels.length} highest-rated models are shown; ${models.length - shownModels.length} more are in the fit.</p>` : '')
+        + (fit ? factorMethod(fit, data.taskKind || 'code', data.days || 90) : '');
+    return page('Harness × model — AI', 'Every harness and model as an agent, with its score, interval and interaction, from OpenVibe.Bench.', body, '/ai/matrix', [{ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe harness by model matrix', url: 'https://openvibe.compare/ai/matrix' }]);
+}
+
+// ── An agent pair: the gap, split ──
+function agentCompare(data, pair) {
+    const a = pair.a, b = pair.b;
+    const gap = value(pair.gap) || 0;
+    const lead = gap >= 0 ? a : b;
+    const trail = gap >= 0 ? b : a;
+    const sign = gap >= 0 ? 1 : -1;
+    const part = (k) => { const n = value(pair.parts && pair.parts[k]); return n == null ? 0 : Math.round(sign * n * 10) / 10 || 0; };
+    const parts = { model: part('model'), harness: part('harness'), interaction: part('interaction') };
+    const gapText = Math.abs(Math.round(gap * 10) / 10);
+    const sentence = gap === 0
+        ? `${agentName(a)} and ${agentName(b)} are level. Of this 0-point gap, ${pointsText(parts.model)} is the model, ${pointsText(parts.harness)} the harness, ${pointsText(parts.interaction)} the two together.`
+        : `${agentName(lead)} is ${gapText} Elo points ahead of ${agentName(trail)}. Of this ${gapText}-point gap, ${pointsText(parts.model)} is the model, ${pointsText(parts.harness)} the harness, ${pointsText(parts.interaction)} the two together.`;
+    const negative = Object.values(parts).some((x) => x < 0);
+    const sideFacts = (x) => [
+        ['Harness', `<b>${esc(x.harness)}</b>`],
+        ['Model', `<b>${esc(x.model)}</b>`],
+        ['Agent score', agentScoreCell(x)],
+        ['Model part', `${eloText(x.factors.model.score)} Elo`],
+        ['Harness effect', `${pointsText(x.factors.harness.score)} Elo`],
+        ['Interaction', `${pointsText(x.factors.interaction.score)} Elo`],
+    ];
+    const cards = [a, b].map((x) => `<article class="ai-vs-card"><h2>${agentName(x)}</h2><dl>${sideFacts(x).map(([k, val]) => `<div><dt>${esc(k)}</dt><dd>${val}</dd></div>`).join('')}</dl></article>`).join('');
+    const options = data.options || [];
+    const list = `<datalist id="ai-models">${options.slice(0, 500).map((o) => `<option value="${esc(o)}"></option>`).join('')}</datalist>`;
+    const form = `<form class="ai-filters ai-vs-form" action="/ai/compare"><label class="ai-filter"><span>First entrant</span><input name="a" list="ai-models" value="${esc(agentSlug(a))}" required></label>`
+        + `<label class="ai-filter"><span>Second entrant</span><input name="b" list="ai-models" value="${esc(agentSlug(b))}" required></label><button class="ovk-btn ovk-btn--primary">Compare</button>${list}</form>`;
+    const split = { label: `Where the ${gapText}-point gap comes from`, parts };
+    const canonical = pairPath(a, b);
+    const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>${agentName(a)} vs ${agentName(b)}</h1>`
+        + `<p class="ai-lede">Two agents on the same fit: the same model and harness contributions are added for each. ${fitNote(pair)}</p></header>`
+        + availabilityBlock(data) + `<div class="ai-vs">${cards}</div>`
+        + `<section class="ai-gap" aria-labelledby="ai-gap-title"><h2 id="ai-gap-title">The gap, split</h2><p class="ai-gap-say">${sentence}</p>`
+        + `<div class="ai-gap-split" id="ai-gap-split"></div>`
+        + (negative ? '<p class="ai-fine">A part below zero is drawn by its size; the sign is in the sentence above.</p>' : '')
+        + `</section>`
+        + form
+        + `<p class="ai-fine">The split comes from OpenVibe.Bench's ${esc(KIND_NAME[pair.task_kind] || pair.task_kind || 'code')} fit over ${esc(String(pair.days || 365))} days (${esc(Number(pair.matches || 0).toLocaleString('en-US'))} matches).${pair.method ? ` ${esc(pair.method)}.` : ''} <a href="/ai/harnesses?task_kind=${encodeURIComponent(pair.task_kind || 'code')}&days=${encodeURIComponent(String(pair.days || 365))}">Every harness effect</a> · <a href="/ai/matrix?task_kind=${encodeURIComponent(pair.task_kind || 'code')}&days=${encodeURIComponent(String(pair.days || 365))}">The matrix</a>.</p>`
+        + `<script type="application/json" id="ai-gap-data">${jsonData(split)}</script><script src="/ai-factors.js" defer></script>`;
+    return page(`${agentSlug(a)} vs ${agentSlug(b)}`, `${agentSlug(a)} vs ${agentSlug(b)}: the score gap split into model, harness and interaction.`, body, canonical, [{ '@context': 'https://schema.org', '@type': 'Dataset', name: `${agentSlug(a)} vs ${agentSlug(b)}`, url: `https://openvibe.compare${canonical}` }]);
+}
+
+function fitNote(pair) {
+    return `${esc(KIND_NAME[pair.task_kind] || pair.task_kind || 'Code')} · ${esc(String(pair.days || 365))} days · ${esc(Number(pair.games || 0).toLocaleString('en-US'))} games.`;
 }
 
 function arena() {
@@ -610,6 +800,8 @@ function methodPage(data = {}) {
 ${judgeRows.length ? kit.table({ caption: 'Judges in use', columns: [{ key: 'how', label: 'How', html: true }, { key: 'judge', label: 'Bench judge' }, { key: 'jobs', label: 'Task kinds' }], rows: judgeRows }) : `<p class="ai-fine">${esc('Bench did not answer its kind list; the judge rules above are its published contract.')}</p>`}
 <h2>Verified and submitted</h2>
 <p>A <b>verified</b> run was executed by a service (openvibe.codes, Run, a Node worker); a <b>submitted</b> run was posted with a person’s token. The rankings read verified runs only, and a submitted run is labelled wherever the latest runs are listed.</p>
+<h2>Model and harness, apart</h2>
+<p>An agent is a harness driving a model, so an agent score has two parts. Bench's factor board fits <code>agent = model + harness + model×harness</code> over the same matches, with partial pooling and a 95% interval on each part; the neutral harness <code>ov-bare</code> is the zero when it appears (otherwise the effects are centred), so a harness's effect is in Elo points against that zero. A negative interaction says the harness adds less with that model than it does on average. <a href="/ai/harnesses">The harness board</a> and <a href="/ai/matrix">the harness × model matrix</a> draw those numbers; an agent pair's page splits its gap into the three parts.</p>
 <h2>How often, and what is missing</h2>
 <p>${o.runs == null ? 'Bench did not answer the public counts.' : `${Number(o.benchmarks || 0).toLocaleString('en-US')} public ${o.benchmarks === 1 ? 'benchmark' : 'benchmarks'}, ${Number(o.tasks || 0).toLocaleString('en-US')} ${o.tasks === 1 ? 'task' : 'tasks'}, ${Number(o.runs || 0).toLocaleString('en-US')} ${o.runs === 1 ? 'run' : 'runs'} from ${Number(o.models || 0).toLocaleString('en-US')} ${o.models === 1 ? 'model' : 'models'}; the newest run was ${o.last_run ? esc(dayTime(o.last_run)) : 'never published'}.`}</p>
 <p class="ai-fine">A model with no verified run has no score here; a benchmark with no run says so. The public reads are Bench’s API at <a href="${BENCH}/docs">bench.openvibe.services/docs</a>; the open data is <a href="${BENCH}/api/v1/datasets/benchmarks.jsonl">benchmarks.jsonl</a> and the per-kind datasets. <a href="/ai/feed.xml">New results (RSS)</a> · <a href="https://openvibe.report/api/v1/ai/results">the same as JSON</a>.</p>`;
@@ -638,6 +830,6 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
 }
 
 module.exports = {
-    hub, leaderboard, providers, model, compare, arena, boardPage, benchmarkPage, methodPage, rss,
+    hub, leaderboard, providers, model, compare, arena, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix,
     availabilityBlock, measuredNote, benchState, page, scriptLd, PARTS_CSS,
 };
