@@ -60,7 +60,7 @@ test('measured AI columns come from Report public model rows with Shared words a
  assert.match(html,/240 ms/);assert.match(html,/45\.2 tok\/s/);assert.match(html,/98\.1%/);
  assert.match(html,/<td data-criterion="ttft"><span class="ovm-unknown">—<\/span><\/td>/);assert.match(html,/data-sort="ttft"/);
  assert.match(html,/Measured on OpenVibe\.AI's real traffic; a model shows after 20 calls in 30 days/);
- assert.match(html,/https:\/\/openvibe\.report\/ai\/speed/);
+ assert.match(html,/https:\/\/openvibe\.report\/developers/);
  const md=require('../server/views').markdown(models);
  assert.match(md,/- Time to first token p50: 240 ms — 2026-11-13/);assert.match(md,/- Time to first token p50: —/);
 });
