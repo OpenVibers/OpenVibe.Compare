@@ -56,7 +56,9 @@ function normaliseTab(value) {
 }
 
 function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = console, now = () => Date.now(), timeoutMs = TIMEOUT_MS } = {}) {
-    const baseUrl = trim(config.benchUrl || 'https://bench.openvibe.services');
+    // OV_BENCH_INTERNAL_URL (plan §X step 2c): Bench runs in Compare's own process, so its reads go over loopback
+    // instead of through the edge (whose bench_api rate limit answered Compare's cold start with 429s).
+    const baseUrl = trim(config.benchUrl || process.env.OV_BENCH_INTERNAL_URL || 'https://bench.openvibe.services');
     const clock = typeof now === 'function' ? now : () => Date.now();
     const shared = createSdkBench(createClient({ fetch: fetchImpl, retries: 0 }), { baseUrl });
 
