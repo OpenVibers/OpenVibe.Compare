@@ -179,3 +179,6 @@
 }
 /* Design rule 201: the intro is one line on a computer, at most two on a phone. */
 @media (max-width: 640px) { .ai-lede { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }
+
+/* The leaderboard's pages (11-14). */
+.ai-pager{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:16px 0 0;color:var(--text-muted)}

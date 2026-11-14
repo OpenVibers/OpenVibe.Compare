@@ -42,6 +42,8 @@ function computeCard(compute,q='') {
 // your work through the leaderboard's own filters; and the three rules every page keeps. The AI card reads /ai's own
 // data (ai.comparison()), never the empty ai-models comparison the old home ranked "picks" from.
 const HOME_NOUN={'ai.coding-agents':['agent','agents','verified run','verified runs'],'openvibe.plans':['plan','plans','dated price','dated prices']};
+// A price under a cent keeps two significant digits: "$0.00" read as free (11-14).
+const usd=(v)=>v>=0.01?v.toFixed(2):String(Number(v.toPrecision(2)));
 const plural=(n,one,many)=>`${n.toLocaleString('en-US')} ${n===1?one:many}`;
 function homeCard({href,icon,title,text,fact}){return `<li><a class="cmp-card" href="${esc(href)}"><span class="cmp-card-ic" aria-hidden="true">${kit.icon(icon)}</span><b>${esc(title)}</b><span class="cmp-card-text">${esc(text)}</span>${fact?`<small>${esc(fact)}</small>`:''}</a></li>`;}
 function home(all,compute,ai=null,q='') {
@@ -57,7 +59,7 @@ function home(all,compute,ai=null,q='') {
  const when=!compute||compute.checked_days_ago==null?'':compute.checked_days_ago===0?'checked today':compute.checked_days_ago===1?'checked 1 day ago':`checked ${compute.checked_days_ago} days ago`;
  const cards=[
   {href:'/ai',icon:'brain',title:'AI models',text:'Prices from each provider\'s own page, speed and uptime from real traffic, ratings from blind votes.',
-   fact:chat.length?`${plural(chat.length,'model','models')} from ${plural(makers.size,'maker','makers')}${cheap?` · from $${cheap.out.toFixed(2)} per 1M output tokens`:''}`:'The model list is not available right now.'},
+   fact:chat.length?`${plural(chat.length,'model','models')} from ${plural(makers.size,'maker','makers')}${cheap?` · from $${usd(cheap.out)} per 1M output tokens`:''}`:'The model list is not available right now.'},
   {href:'/compute',icon:'gpu',title:'Compute prices',text:'GPUs and computers from OpenVibe.Exchange: per hour, per GPU GB-hour and per month at 24/7.',
    fact:compute&&compute.unavailable?compute.unavailable:[offers?plural(offers,'offer','offers'):'',gpu?`cheapest GPU ${gpu.gpu||gpu.provider} at $${gpu.hourly.toFixed(2)}/hour`:'',when].filter(Boolean).join(' · ')},
   ...all.filter(c=>c.slug!=='ai-models').map(c=>{const [one,many,rOne,rMany]=HOME_NOUN[c.kind]||['thing','things','dated result','dated results'];

@@ -242,6 +242,8 @@ function scriptLd(obj) {
 }
 
 // ── /ai/leaderboard ──
+const LEADERBOARD_PAGE = 100;
+const PROVIDERS_SHOWN = 200;
 function leaderboard(data = {}) {
     const rows = data.rows || [];
     const filters = data.filters || {};
@@ -259,9 +261,25 @@ function leaderboard(data = {}) {
         + select('uncensored', '18+', [['', 'Any'], ['true', 'Uncensored only']])
         + select('community', 'Runs on', [['', 'Anywhere'], ['true', 'Community machines']])
         + `<button class="ovk-btn ovk-btn--primary">Apply</button></form>`;
+    // A page of LEADERBOARD_PAGE rows (11-14: with the whole Exchange market read, every row in one page made 34 MB of
+    // HTML). The filters and the sort stay in every page link; Apply starts again at page 1.
+    const pages = Math.max(1, Math.ceil(rows.length / LEADERBOARD_PAGE));
+    const at = Math.min(pages, Math.max(1, Math.floor(Number(filters.page) || 1)));
+    const shown = rows.slice((at - 1) * LEADERBOARD_PAGE, at * LEADERBOARD_PAGE);
+    const pageHref = (n) => {
+        const q = new URLSearchParams();
+        for (const [k, v] of Object.entries(filters)) if (k !== 'page' && v != null && v !== '' && typeof v === 'string') q.set(k, v);
+        if (n > 1) q.set('page', String(n));
+        const qs = q.toString();
+        return `/ai/leaderboard${qs ? `?${qs}` : ''}`;
+    };
+    const pager = pages > 1 ? `<nav class="ai-pager" aria-label="Leaderboard pages">${at > 1 ? `<a class="ovk-btn ovk-btn--quiet" href="${esc(pageHref(at - 1))}" rel="prev">Previous</a>` : ''}`
+        + `<span>Page ${at} of ${pages.toLocaleString('en-US')}</span>${at < pages ? `<a class="ovk-btn ovk-btn--quiet" href="${esc(pageHref(at + 1))}" rel="next">Next</a>` : ''}</nav>` : '';
+    const ratedCount = rows.filter(rated).length;
+    const range = pages > 1 ? ` Showing ${((at - 1) * LEADERBOARD_PAGE + 1).toLocaleString('en-US')}–${((at - 1) * LEADERBOARD_PAGE + shown.length).toLocaleString('en-US')}.` : '';
     const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>AI model leaderboard</h1>`
-        + `<p class="ai-lede">${rows.length} ${rows.length === 1 ? 'model' : 'models'}${rows.filter(rated).length ? `, ${rows.filter(rated).length} rated` : ''}. Rated models first, then the rest with their prices.</p></header>`
-        + availabilityBlock(data) + form + board(rows, { full: true }) + measuredNote(data) + dataLinks()
+        + `<p class="ai-lede">${rows.length.toLocaleString('en-US')} ${rows.length === 1 ? 'model' : 'models'}${ratedCount ? `, ${ratedCount} rated` : ''}. Rated models first, then the rest with their prices.${range}</p></header>`
+        + availabilityBlock(data) + form + board(shown, { full: true }) + pager + measuredNote(data) + dataLinks()
         + mineNote('Ran a benchmark yourself?');
     return page('AI model leaderboard', 'Every AI model with its rating, provider prices and measured speed; filter and sort.', body, '/ai/leaderboard', [{ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe AI model leaderboard', url: 'https://openvibe.compare/ai/leaderboard' }]);
 }
@@ -308,7 +326,10 @@ function providers(data = {}) {
     const sorted = [...(data.providers || [])].sort((a, b) => (Number(b.requests_7d) || 0) - (Number(a.requests_7d) || 0));
     const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>AI providers</h1>`
         + `<p class="ai-lede">Every model and provider offer in the market. Prices come from each provider's own page. Reply time, errors and uptime are measured on real requests over the last seven days; offers outside the router say “Not routed here”, while routed offers without measurements say “Not measured yet”. Status is measured from the Exchange catalogue: down while an offer's circuit is open, degraded when more than 5% of at least 10 requests in the last hour failed, with the plain reason.</p></header>`
-        + availabilityBlock(data) + providerTable(sorted);
+        + availabilityBlock(data) + providerTable(sorted.slice(0, PROVIDERS_SHOWN))
+        // Every offer with traffic is in the first rows (sorted by requests); the market's thousands of priced offers
+        // beyond them are a search away, not 27 MB of one page (11-14).
+        + (sorted.length > PROVIDERS_SHOWN ? `<p class="ai-fine">${(sorted.length - PROVIDERS_SHOWN).toLocaleString('en-US')} more priced offers: <a href="/ai/leaderboard?sort=price">find a model on the leaderboard</a> to see its providers.</p>` : '');
     return page('AI providers', 'AI providers compared: price per million tokens, reply time, error rate and uptime measured on real traffic.', body, '/ai/providers');
 }
 
