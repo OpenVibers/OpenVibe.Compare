@@ -6,6 +6,9 @@
 const { requestJson, trim, TIMEOUT_MS } = require('./ai-source');
 
 const TTL_MS = 120_000;
+// A failed market read is tried again after this, not after the full TTL: one timeout while the AI service restarted
+// (the 11-14 pin round) left /ai with no models for minutes. The last good copy serves meanwhile, marked stale.
+const RETRY_MS = 15_000;
 
 function createAiCatalogue({ config = {}, fetchImpl = globalThis.fetch, log = console, now = () => Date.now(), timeoutMs = TIMEOUT_MS } = {}) {
     const baseUrl = trim(config.aiUrl || 'https://api.openvibe.exchange');
@@ -37,8 +40,10 @@ function createAiCatalogue({ config = {}, fetchImpl = globalThis.fetch, log = co
                 const suffix = cursor == null ? '' : `&cursor=${encodeURIComponent(cursor)}`;
                 const data = await requestJson(`${baseUrl}/api/v1/exchange/market?limit=500${suffix}`, { fetchImpl, log, label: 'ai exchange market', timeoutMs });
                 if (!data || !Array.isArray(data.offers) || !('next_cursor' in data) || (data.next_cursor != null && typeof data.next_cursor !== 'string') || (first && first.generated_at !== data.generated_at) || seen.has(data.next_cursor) || seen.size > 1000) {
-                    const value = marketHit ? { ...marketHit.value, stale: true } : null;
-                    marketHit = { value, expires: now() + TTL_MS };
+                    // Only a real last good copy is served stale: after two failures in a row the old code spread null
+                    // into { stale: true }, a "market" with no offers.
+                    const value = marketHit && marketHit.value ? { ...marketHit.value, stale: true } : null;
+                    marketHit = { value, expires: now() + RETRY_MS };
                     return value;
                 }
                 first ||= data;
@@ -56,4 +61,4 @@ function createAiCatalogue({ config = {}, fetchImpl = globalThis.fetch, log = co
     return { catalog, market, baseUrl, ttlMs: TTL_MS };
 }
 
-module.exports = { createAiCatalogue, TTL_MS };
+module.exports = { createAiCatalogue, TTL_MS, RETRY_MS };
