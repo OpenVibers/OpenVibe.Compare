@@ -177,3 +177,5 @@
   .ai-vs-form .ai-filter{grid-column:1/-1}
   .ai-page .ovk-stats{grid-template-columns:repeat(auto-fit,minmax(min(100%,120px),1fr))}
 }
+/* Design rule 201: the intro is one line on a computer, at most two on a phone. */
+@media (max-width: 640px) { .ai-lede { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }
