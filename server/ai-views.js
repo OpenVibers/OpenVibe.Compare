@@ -16,7 +16,10 @@ const metrics = require('openvibe-shared/ov-metrics');
 const v = require('./views');
 
 const esc = v.esc;
+// Bench's own host: its owner pages (/benchmarks/mine) and its docs stay there. The API is not there any more
+// since the 11-13 cutover — Bench's whole API is mounted inside OpenVibe.Compare.
 const BENCH = 'https://bench.openvibe.services';
+const BENCH_API = 'https://openvibe.compare';
 const PERF = 'https://openvibe.report/api/v1/ai/performance?group=model&days=30';
 const value = (x) => x == null || !Number.isFinite(Number(x)) ? null : Number(x);
 const idPath = (id) => `/ai/models/${encodeURIComponent(id || '')}`;
@@ -732,7 +735,7 @@ function boardPage(data = {}) {
         + `<section aria-label="${esc(TABS.find((t) => t.key === tab)?.label || 'Board')}">${content}</section>`
         + (registryRows.length ? kit.section({ title: 'Verified runs on this task kind', count: registryRows.length, body: (registryRows.length > 1 ? scoreCostChart(registryRows.map((r) => ({ model: r.model, score: r.score, cost_usd: r.cost, ms: r.speed, runs: r.runs, last_run: r.last_run }))) : '') + registryTable }) : '')
         + kit.section({ title: 'Latest runs', count: latestRows.length, body: lastRunTable })
-        + `<p class="ai-fine">Download the <a href="${BENCH}/api/v1/datasets/${encodeURIComponent(kindId)}.jsonl">dataset JSONL</a> from Bench.</p>`
+        + `<p class="ai-fine">Download the <a href="${BENCH_API}/api/v1/datasets/${encodeURIComponent(kindId)}.jsonl">dataset JSONL</a> from Bench.</p>`
         + mineNote('Ran this task kind yourself?');
     return page(`${name}: AI`, `${name}: which AI does it best, what it costs and how fast it is.`, body, `/ai/${encodeURIComponent(kindId)}`);
 }
@@ -781,7 +784,7 @@ function benchmarkPage(data = {}) {
         + kit.stats([[entries.length, entries.length === 1 ? 'model ranked' : 'models ranked'], [latestRows.length, 'latest runs'], [tasks.length, tasks.length === 1 ? 'task' : 'tasks'], [last ? dayTime(last) : 'No runs yet', 'last run']], { label: `${meta.title} in numbers` })
         + chart + leaderboardTable
         + kit.section({ title: 'Latest runs', count: latestRows.length, body: latestTable })
-        + `<p class="ai-fine"><a href="/ai/method">How the runs are judged</a> · <a href="/ai/compare?models=${entries.slice(0, 3).map((e) => encodeURIComponent(e.model)).join(',')}">Compare the leaders</a> · <a href="${BENCH}/api/v1/datasets/benchmarks.jsonl">Bench's open data</a></p>`
+        + `<p class="ai-fine"><a href="/ai/method">How the runs are judged</a> · <a href="/ai/compare?models=${entries.slice(0, 3).map((e) => encodeURIComponent(e.model)).join(',')}">Compare the leaders</a> · <a href="${BENCH_API}/api/v1/datasets/benchmarks.jsonl">Bench's open data</a></p>`
         + mineNote('Ran this benchmark yourself?');
     return page(`${meta.title}: AI benchmark`, `${meta.title}: verified AI results, cost and speed from OpenVibe.Bench.`, body, `/ai/${encodeURIComponent(meta.id)}`);
 }
@@ -812,7 +815,7 @@ ${judgeRows.length ? kit.table({ caption: 'Judges in use', columns: [{ key: 'how
 <p>An agent is a harness driving a model, so an agent score has two parts. Bench's factor board fits <code>agent = model + harness + model×harness</code> over the same matches, with partial pooling and a 95% interval on each part; the neutral harness <code>ov-bare</code> is the zero when it appears (otherwise the effects are centred), so a harness's effect is in Elo points against that zero. A negative interaction says the harness adds less with that model than it does on average. <a href="/ai/harnesses">The harness board</a> and <a href="/ai/matrix">the harness × model matrix</a> draw those numbers; an agent pair's page splits its gap into the three parts.</p>
 <h2>How often, and what is missing</h2>
 <p>${o.runs == null ? 'Bench did not answer the public counts.' : `${Number(o.benchmarks || 0).toLocaleString('en-US')} public ${o.benchmarks === 1 ? 'benchmark' : 'benchmarks'}, ${Number(o.tasks || 0).toLocaleString('en-US')} ${o.tasks === 1 ? 'task' : 'tasks'}, ${Number(o.runs || 0).toLocaleString('en-US')} ${o.runs === 1 ? 'run' : 'runs'} from ${Number(o.models || 0).toLocaleString('en-US')} ${o.models === 1 ? 'model' : 'models'}; the newest run was ${o.last_run ? esc(dayTime(o.last_run)) : 'never published'}.`}</p>
-<p class="ai-fine">A model with no verified run has no score here; a benchmark with no run says so. The public reads are Bench’s API at <a href="${BENCH}/docs">bench.openvibe.services/docs</a>; the open data is <a href="${BENCH}/api/v1/datasets/benchmarks.jsonl">benchmarks.jsonl</a> and the per-kind datasets. <a href="/ai/feed.xml">New results (RSS)</a> · <a href="https://openvibe.report/api/v1/ai/results">the same as JSON</a>.</p>`;
+<p class="ai-fine">A model with no verified run has no score here; a benchmark with no run says so. The public reads are Bench’s API at <a href="${BENCH}/docs">bench.openvibe.services/docs</a>; the open data is <a href="${BENCH_API}/api/v1/datasets/benchmarks.jsonl">benchmarks.jsonl</a> and the per-kind datasets. <a href="/ai/feed.xml">New results (RSS)</a> · <a href="https://openvibe.report/api/v1/ai/results">the same as JSON</a>.</p>`;
     return page('How the AI results are judged', 'The method behind OpenVibe.Bench’s scores, costs and speeds, and how to read them.', body, '/ai/method');
 }
 

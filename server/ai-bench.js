@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * OpenVibe.Bench's public reads, as Report reads them and through openvibe-sdk/bench:
+ * OpenVibe.Bench's public reads, as Report reads them and through openvibe-sdk/compare:
  *   GET /api/v1/kinds                        every benchmark kind
  *   GET /api/v1/boards/:kind?type=elo|pareto|cost
  *   GET /api/v1/models/:model(/summary)      one model across every kind
@@ -15,7 +15,7 @@
  */
 const { trim, requestJson, TIMEOUT_MS } = require('./ai-source');
 const { createClient } = require('openvibe-sdk/core');
-const { createBenchClient: createSdkBench } = require('openvibe-sdk/bench');
+const { createCompareClient: createSdkBench } = require('openvibe-sdk/compare');
 
 const TTL_MS = 60_000;
 const KIND_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/;
@@ -58,7 +58,7 @@ function normaliseTab(value) {
 function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = console, now = () => Date.now(), timeoutMs = TIMEOUT_MS } = {}) {
     // OV_BENCH_INTERNAL_URL (plan §X step 2c): Bench runs in Compare's own process, so its reads go over loopback
     // instead of through the edge (whose bench_api rate limit answered Compare's cold start with 429s).
-    const baseUrl = trim(config.benchUrl || process.env.OV_BENCH_INTERNAL_URL || 'https://bench.openvibe.services');
+    const baseUrl = trim(config.benchUrl || process.env.OV_BENCH_INTERNAL_URL || 'https://openvibe.compare');
     const clock = typeof now === 'function' ? now : () => Date.now();
     const shared = createSdkBench(createClient({ fetch: fetchImpl, retries: 0 }), { baseUrl });
 

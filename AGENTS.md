@@ -22,7 +22,7 @@ API**. Server-rendered pages; `openvibe-shared` for the shell.
 - `GET /ai`, `/ai/leaderboard`, `/ai/providers`, `/ai/models/:model`, `/ai/compare[/:a-vs-:b]`,
   `/ai/method`, `/ai/feed.xml`, `/ai/harnesses`, `/ai/matrix`, `/ai/:ref` (a Bench task kind or
   benchmark) and `/ai/arena` — Report's AI comparison pages, with Bench's boards through
-  `openvibe-sdk/bench`, the AI catalogue and Exchange market joined, and Report's measured first
+  `openvibe-sdk/compare`, the AI catalogue and Exchange market joined, and Report's measured first
   token, tokens per second and success beside the prices. `/ai/harnesses` draws each harness's effect
   against the neutral `ov-bare` with its interval; `/ai/matrix` crosses harness and model; an agent
   pair (`<harness>+<model>-vs-<harness>+<model>`) splits its gap into model, harness and interaction.
@@ -43,14 +43,14 @@ and the compute book in [server/compute.js](server/compute.js) `SOURCE`:
 | Feed | What |
 |---|---|
 | `api.openvibe.exchange/api/v1/exchange/market` | dated offers and checked prices (AI Exchange) |
-| `bench.openvibe.services/api/v1/boards/chat.arena` | Arena Elo and median response time (OpenVibe.Bench) |
-| `bench.openvibe.services/api/v1/runs?kind=codes.patch` / `codes.ticket` | verified Bench runs (OpenVibe.Bench) |
+| `openvibe.compare/api/v1/boards/chat.arena` | Arena Elo and median response time (OpenVibe.Bench) |
+| `openvibe.compare/api/v1/runs?kind=codes.patch` / `codes.ticket` | verified Bench runs (OpenVibe.Bench) |
 | `openvibe.codes/api/v1/harnesses` | coding harness catalog (OpenVibe.Codes) |
 | `billing.openvibe.network/api/v1/plans` | published plans (OpenVibe.Billing) |
 | `openvibe.report/api/v1/ai/performance?group=model&days=30` | measured AI time to first token, tokens per second and success rate, public model rows with a 20-call floor (OpenVibe.Report) |
 | `openvibe.exchange/api/compute/prices` | reviewed compute tariffs per provider and region (OpenVibe.Exchange) |
-| `bench.openvibe.services/api/v1/{kinds,ratings,benchmarks,rankings,runs,overview}` | AI boards, benchmarks and new runs through `openvibe-sdk/bench` (OpenVibe.Bench) |
-| `bench.openvibe.services/api/v1/factors?task_kind=&days=` | model and harness apart: harness effects, agents and interactions, with intervals (OpenVibe.Bench) |
+| `openvibe.compare/api/v1/{kinds,ratings,benchmarks,rankings,runs,overview}` | AI boards, benchmarks and new runs through `openvibe-sdk/compare` (OpenVibe.Bench) |
+| `openvibe.compare/api/v1/factors?task_kind=&days=` | model and harness apart: harness effects, agents and interactions, with intervals (OpenVibe.Bench) |
 | `api.openvibe.exchange/api/v1/exchange/{catalog,market}` | AI catalogue and dated provider prices (OpenVibe.AI / Exchange) |
 
 It does not call AI, Live, Network or any authenticated API. Nothing here writes anywhere.
