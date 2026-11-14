@@ -1,6 +1,6 @@
 'use strict';
 
-// The AI pages' data: OpenVibe.Bench's boards (through openvibe-sdk/bench), the AI catalogue and Exchange
+// The AI pages' data: OpenVibe.Bench's boards (through openvibe-sdk/compare), the AI catalogue and Exchange
 // market, and Report's measured model rows. Missing evidence is not zero: a source that does not answer
 // leaves its part with a worded status and a dash, never a made-up value.
 const { createAiCatalogue } = require('./ai-catalogue');

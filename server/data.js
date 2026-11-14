@@ -1,6 +1,6 @@
 'use strict';
 // Bench over loopback when it runs in Compare's process (OV_BENCH_INTERNAL_URL, plan §X step 2c), else its public host.
-const BENCH = String(process.env.OV_BENCH_INTERNAL_URL || 'https://bench.openvibe.services').replace(/\/+$/, '');
+const BENCH = String(process.env.OV_BENCH_INTERNAL_URL || 'https://openvibe.compare').replace(/\/+$/, '');
 const ENDPOINTS = {
  market: 'https://api.openvibe.exchange/api/v1/exchange/market',
  quality: `${BENCH}/api/v1/boards/chat.arena`,
