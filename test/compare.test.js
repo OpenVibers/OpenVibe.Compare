@@ -189,6 +189,24 @@ test('a kind with no public rating is an empty board, never "Bench is unavailabl
  assert.equal(c.stale,true,'a real outage still reads as stale');
 });
 
+test('the leaderboard is pages of 100 and the providers page names the rest (11-14: the whole market made 34 MB)',()=>{
+ const views=require('../server/ai-views');
+ const rows=Array.from({length:250},(_,i)=>({id:`model-${i}`,maker:'Maker',model_kind:'chat',rating:{value:null},task_ratings:[],provider_offers:[{provider:'p',provider_name:'P',model:`model-${i}`,price:{in:1,out:2,currency:'USD'}}]}));
+ const has=(html,i)=>new RegExp(`/ai/models/model-${i}"`).test(html);
+ const one=views.leaderboard({rows,filters:{sort:'price',maker:'Maker'}});
+ assert.ok(has(one,0)&&has(one,99)&&!has(one,100),'page 1: the first hundred');
+ assert.match(one,/250 models\./);assert.match(one,/Showing 1–100\./);assert.match(one,/Page 1 of 3/);
+ assert.ok(one.includes('href="/ai/leaderboard?sort=price&amp;maker=Maker&amp;page=2" rel="next"'),'Next keeps the filters');
+ const two=views.leaderboard({rows,filters:{sort:'price',page:'2'}});
+ assert.ok(!has(two,99)&&has(two,100)&&has(two,199)&&!has(two,200),'page 2: the second hundred');
+ assert.ok(two.includes('href="/ai/leaderboard?sort=price" rel="prev"'),'Previous to page 1 has no page number');
+ const last=views.leaderboard({rows,filters:{page:'99'}});assert.ok(has(last,249)&&!has(last,199),'a page past the end shows the last');
+ assert.ok(!/ai-pager/.test(views.leaderboard({rows:rows.slice(0,40),filters:{}})),'one page needs no pager');
+ const offers=Array.from({length:450},(_,i)=>({provider:'p',provider_name:'P',model:`model-${i}`,price:{in:1,out:2},requests_7d:i<3?50:0,routed:i<3}));
+ const prov=views.providers({providers:offers});
+ assert.match(prov,/250 more priced offers/);assert.ok(prov.length<offers.length*1500,'not every offer in one page');
+});
+
 test('Compare signs people in through OpenVibe.Network: /auth/login sends the browser to the compare client',async()=>{
  const {createApp}=require('../server/app');
  const app=createApp({getData:async()=>[],getCompute:async()=>({}),ai:{comparison:async()=>({rows:[],tasks:[],updated_at:null})}});
