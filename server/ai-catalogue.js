@@ -11,7 +11,9 @@ const TTL_MS = 120_000;
 const RETRY_MS = 15_000;
 
 function createAiCatalogue({ config = {}, fetchImpl = globalThis.fetch, log = console, now = () => Date.now(), timeoutMs = TIMEOUT_MS } = {}) {
-    const baseUrl = trim(config.aiUrl || 'https://api.openvibe.exchange');
+    // OV_AI_INTERNAL_URL: OpenVibe.AI on this host (production: http://127.0.0.1:4700), as Bench is read over loopback.
+    // Through the edge, a boot's paged market reads met the public API's rate limit (HTTP 429, 11-14).
+    const baseUrl = trim(config.aiUrl || process.env.OV_AI_INTERNAL_URL || 'https://api.openvibe.exchange');
     let hit = null;
     let pending = null;
 
