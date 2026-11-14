@@ -171,7 +171,8 @@ test('a Bench read past its minute serves the last answer at once and refreshes 
  now=61_000;hang=true;
  const t0=Date.now();const b=await bench.kinds();assert.ok(Date.now()-t0<50);assert.deepEqual(b.data,a.data);assert.equal(b.stale,false);
  await bench.kinds();assert.equal(calls,2,'one refresh per key at a time');
- now=200_000;const c=await bench.kinds();assert.equal(c.stale,true,'older than two minutes reads as stale');
+ now=200_000;assert.equal((await bench.kinds()).stale,false,'a refresh under way is not an outage (/ai\'s comparison rebuilds every two minutes)');
+ now=400_000;const c=await bench.kinds();assert.equal(c.stale,true,'a refresh that never answers reads as stale after five minutes');
 });
 
 test('a kind with no public rating is an empty board, never "Bench is unavailable"',async()=>{
