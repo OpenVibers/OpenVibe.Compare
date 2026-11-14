@@ -124,7 +124,15 @@ function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = co
             `bench board (${kindId}, ${type})`,
             500,
             type === 'elo' ? async () => {
-                const data = await shared.ratings.get(kindId, { signal: AbortSignal.timeout(timeoutMs) });
+                let data;
+                try {
+                    data = await shared.ratings.get(kindId, { signal: AbortSignal.timeout(timeoutMs) });
+                } catch (err) {
+                    // A kind with no public rating yet is an empty board, not Bench being away: on 11-14 chat.willing's
+                    // 404 kept /ai saying "OpenVibe.Bench is unavailable" while Bench answered everything else.
+                    if (err && err.code === 'bench.kind_not_found') return { board: { kind_id: kindId, type: 'elo', rows: [] }, no_public_rating: true };
+                    throw err;
+                }
                 return { ...data, board: { ...data.board, rows: (data.board && data.board.rows || []).filter((row) => row.games >= 20) } };
             } : null,
         );

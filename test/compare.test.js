@@ -174,6 +174,20 @@ test('a Bench read past its minute serves the last answer at once and refreshes 
  now=200_000;const c=await bench.kinds();assert.equal(c.stale,true,'older than two minutes reads as stale');
 });
 
+test('a kind with no public rating is an empty board, never "Bench is unavailable"',async()=>{
+ const {createBenchClient}=require('../server/ai-bench');
+ let now=0,down=false;
+ const problem=(status,code)=>({ok:false,status,headers:{get:()=>'application/problem+json'},json:async()=>({status,code,detail:'No public rating for this kind.'}),text:async()=>JSON.stringify({status,code,detail:'No public rating for this kind.'})});
+ const fetchImpl=async()=>down?problem(503,'bench.unavailable'):problem(404,'bench.kind_not_found');
+ const bench=createBenchClient({fetchImpl,now:()=>now,log:{warn(){},info(){}}});
+ const a=await bench.board('chat.willing','elo');
+ assert.ok(a&&a.data,'an answer, not a failure');assert.deepEqual(a.data.board.rows,[]);assert.equal(a.data.no_public_rating,true);assert.equal(a.stale,false);
+ now=300_000;await bench.board('chat.willing','elo');for(let i=0;i<5;i++)await new Promise((r)=>setImmediate(r));const b=await bench.board('chat.willing','elo');
+ assert.equal(b.stale,false,'still fresh minutes later: nothing failed');
+ down=true;now=900_000;await bench.board('chat.willing','elo');await new Promise((r)=>setImmediate(r));const c=await bench.board('chat.willing','elo');
+ assert.equal(c.stale,true,'a real outage still reads as stale');
+});
+
 test('Compare signs people in through OpenVibe.Network: /auth/login sends the browser to the compare client',async()=>{
  const {createApp}=require('../server/app');
  const app=createApp({getData:async()=>[],getCompute:async()=>({}),ai:{comparison:async()=>({rows:[],tasks:[],updated_at:null})}});
