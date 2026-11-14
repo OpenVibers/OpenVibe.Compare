@@ -18,6 +18,7 @@ const { createClient } = require('openvibe-sdk/core');
 const { createCompareClient: createSdkBench } = require('openvibe-sdk/compare');
 
 const TTL_MS = 60_000;
+const STALE_AFTER_MS = 5 * TTL_MS;   // a last copy older than this, with no fresh answer since, reads as stale
 const KIND_RE = /^[a-z0-9][a-z0-9._-]{0,79}$/;
 const BENCHMARK_RE = /^bmk_[0-9A-HJKMNP-TV-Z]{26}$/;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:+\/~\-]{0,119}$/;
@@ -82,12 +83,14 @@ function createBenchClient({ config = {}, fetchImpl = globalThis.fetch, log = co
         if (hit && hit.retryAtMs > atMs) return { data: hit.data, at: hit.at, stale: true };
         if (hit) {
             // Past its minute, the last good answer serves at once and a fresh one is fetched behind it, so a visitor
-            // never waits on Bench's timeout (a page took 11 s when a board read was aborted). It reads as stale only once
-            // it is older than two minutes.
+            // never waits on Bench's timeout (a page took 11 s when a board read was aborted). A refresh that failed
+            // marks it stale (retryAtMs, above); the age is only a backstop for a refresh that never answers. At two
+            // minutes it fired on every rebuild of /ai's comparison (cached two minutes itself), so the page said
+            // "OpenVibe.Bench is unavailable" while every read succeeded (11-14).
             if (!refreshing.has(key)) {
                 refreshing.set(key, fetchInto(store, key, path, label, cap, loader, hit).catch(() => null).finally(() => refreshing.delete(key)));
             }
-            return { data: hit.data, at: hit.at, stale: atMs - hit.atMs > 2 * TTL_MS };
+            return { data: hit.data, at: hit.at, stale: atMs - hit.atMs > STALE_AFTER_MS };
         }
         if (refreshing.has(key)) return refreshing.get(key);
         const first = fetchInto(store, key, path, label, cap, loader, null).finally(() => refreshing.delete(key));
