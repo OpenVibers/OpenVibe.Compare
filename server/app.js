@@ -57,9 +57,10 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
    r.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+[...paths].map(([p,d])=>`<url><loc>https://openvibe.compare${v.esc(p)}</loc><lastmod>${v.esc(d)}</lastmod></url>`).join('')+'</urlset>');
  }));
  app.get('/',wrap(async(req,res)=>{
-   const [all,compute]=await Promise.all([getData(),getCompute()]);res.vary('Accept');
+   // The AI card and the stat read /ai's own data; the home still answers when it is unreachable.
+   const [all,compute,aiData]=await Promise.all([getData(),getCompute(),ai.comparison().catch(()=>null)]);res.vary('Accept');
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send('# Compare anything\n\n- [Compute prices](/compute): GPUs and computers from OpenVibe.Exchange, per hour, per GPU GB-hour and per month.\n- [AI model leaderboard](/ai): ratings from blind votes, provider prices and measured speed.\n'+all.map(c=>`- [${c.title}](${c.slug==='ai-models'?'/ai':`/comparisons/${c.slug}`}): ${c.summary}`).join('\n'));
-   res.send(v.page('Compare anything',v.home(all,compute,String(req.query.q||'').slice(0,120),String(req.query.task||'balanced'),String(req.query.budget||'').slice(0,20))));
+   res.send(v.page('Compare anything',v.home(all,compute,aiData,String(req.query.q||'').slice(0,120)),'/',[],{head:'<link rel="stylesheet" href="/ai-comparison.css"><link rel="stylesheet" href="/shared/kit-data.css">',description:'Compare AI models, GPUs, coding agents and OpenVibe plans side by side: every price, speed and score with its source and the day it was read.'}));
  }));
  app.get('/compute',wrap(async(req,res)=>{const compute=await getCompute();res.vary('Accept');if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(computeViews.markdown(compute,req.query));res.send(v.page('Compute prices',computeViews.body(compute,req.query),'/compute',[computeViews.jsonLd(compute)]));}));
  app.get('/ai',wrap(async(_q,r)=>r.send(aiViews.hub(await ai.comparison()))));
