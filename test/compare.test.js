@@ -33,7 +33,17 @@ test('API, phone/table markup, URL weights, Markdown, Dataset, discovery and COR
   const page=await (await fetch(base+'/comparisons/openvibe-plans')).text();assert.match(page,/Dataset/);assert.match(page,/dateModified/);
   const md=await (await fetch(base+'/comparisons/openvibe-plans',{headers:{Accept:'text/markdown'}})).text();assert.match(md,/# OpenVibe plans/);
   for(const url of ['/','/things/codex','/llms.txt','/sitemap.xml','/robots.txt','/api/v1/comparisons/ai-models'])assert.equal((await fetch(base+url)).status,200,url);
-  const home=await (await fetch(base+'/')).text();assert.match(home,/<h2><a href="\/ai">AI models<\/a><\/h2>/);
+  // The home (the 11-14 redesign): one card per comparison with its real number, the AI card from /ai's own data, a
+  // picker that opens the leaderboard filtered, no picks ranked from the empty ai-models comparison, no blank icon.
+  const home=await (await fetch(base+'/')).text();
+  assert.match(home,/<a class="cmp-card" href="\/ai">/);assert.match(home,/<b>AI models<\/b>/);
+  assert.match(home,/<small>\d+ models? from \d+ makers?/,'the AI card counts /ai\'s own models');
+  for(const href of ['/compute','/comparisons/coding-agents','/comparisons/openvibe-plans','/arena'])assert.ok(home.includes(`<a class="cmp-card" href="${href}">`),href);
+  assert.match(home,/<form class="cmp-pick" method="get" action="\/ai\/leaderboard">/);for(const n of ['kind','price','sort'])assert.match(home,new RegExp(`name="${n}"`),n);
+  assert.ok(!/No measured picks|For my use|How picks are ranked/.test(home),'the old picks block is gone');
+  assert.ok(!/<span class="cmp-card-ic" aria-hidden="true"><\/span>/.test(home),'every card glyph draws');
+  const none=await (await fetch(base+'/?q=zz-nothing-zz')).text();assert.match(none,/Nothing on Compare matches/);
+  const alpha=await (await fetch(base+'/?q=alpha')).text();assert.match(alpha,/href="\/ai\/models\/[^"]*alpha"/,'a model search links the model');
   const thing=await (await fetch(base+'/things/codex')).text();assert.match(thing,/Codex/);assert.match(thing,/openvibe.codes/);
   assert.equal((await fetch(base+'/api/v1/comparisons/nope')).status,404);
  }finally{await new Promise(r=>server.close(r));}

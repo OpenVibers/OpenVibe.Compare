@@ -59,3 +59,28 @@ main a,main summary{overflow-wrap:anywhere}
 .compute-filters .ovk-set-text{min-width:0}
 @media(min-width:900px){.compute-cards{display:none}.compute-table{display:block}}
 @media(max-width:899px){.compute-table{display:none}}
+
+/* The home (the 11-14 redesign, plan §AB.49): one card per comparison with its real number, the picker that opens the
+   leaderboard filtered, and the three rules. Scoped to .cmp-home: the generic main rules above are for the tables. */
+.cmp-home .cmp-cards,.cmp-home .cmp-how{list-style:none;margin:0;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.cmp-home .cmp-cards,.cmp-home .cmp-how{margin:4px 14px 14px}
+.cmp-home .cmp-cards>li{min-width:0}
+.cmp-home .cmp-how+.ai-fine{margin:4px 14px 14px;padding-top:12px;border-top:1px solid var(--border,rgba(255,255,255,.08))}
+.cmp-home .cmp-card{box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr);align-content:start;gap:4px 14px;height:100%;padding:16px 18px;border:1px solid var(--border,rgba(255,255,255,.08));border-radius:16px;background:var(--bg-secondary,#101828);color:inherit;text-decoration:none;transition:border-color var(--ov-dur-2,.2s)}
+.cmp-home .cmp-card:hover{border-color:var(--accent,#3b82f6)}
+.cmp-home .cmp-card:focus-visible{outline:2px solid var(--accent,#3b82f6);outline-offset:2px}
+.cmp-home .cmp-card-ic{grid-row:span 3;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:color-mix(in srgb,var(--accent,#3b82f6) 14%,transparent);color:var(--accent-light,var(--accent,#60a5fa))}
+.cmp-home .cmp-card-ic svg{width:22px;height:22px}
+.cmp-home .cmp-card b{font-size:1.05rem;line-height:1.3}
+.cmp-home .cmp-card-text{color:var(--text-secondary);font-size:.92rem;line-height:1.45}
+.cmp-home .cmp-card small{margin-top:4px;color:var(--text-muted);font-size:.84rem;font-weight:600;font-variant-numeric:tabular-nums}
+.cmp-home .cmp-pick{display:grid;gap:16px;margin:0}
+.cmp-home .cmp-pick fieldset{margin:0;padding:0;border:0;display:grid;gap:8px;min-width:0}
+.cmp-home .cmp-pick legend{padding:0;margin-bottom:8px;font-size:.92rem;font-weight:700}
+.cmp-home .cmp-pick p{margin:0}
+.cmp-home .cmp-how{grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+.cmp-home .cmp-how li{display:grid;grid-template-columns:auto minmax(0,1fr);align-content:start;gap:2px 12px}
+.cmp-home .cmp-how .cmp-card-ic{grid-row:span 2;width:36px;height:36px;border-radius:10px}
+.cmp-home .cmp-how .cmp-card-ic svg{width:19px;height:19px}
+.cmp-home .cmp-how b{font-size:.98rem}
+.cmp-home .cmp-how li>span:last-child{color:var(--text-secondary);font-size:.9rem;line-height:1.45}
