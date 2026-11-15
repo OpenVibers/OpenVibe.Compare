@@ -1,6 +1,9 @@
 /* Report's AI comparison pages. Report's own tokens only (--bg-card, --border, --text-*, --accent, --room-*); the kit
    draws tables (stacked into cards under 600 px), stats, sections, folds and the search pill. */
-.ai-page{display:grid;gap:clamp(20px,3vw,32px);padding-block:clamp(12px,2vw,24px) 48px}
+.ai-page{display:grid;gap:clamp(20px,3vw,32px);padding-block:4px 48px}
+/* A page with a hero starts right under the navbar (the owner, 11-15: "why the empty space under navbar"): main's 2rem
+   top margin and the page's own padding left a 60 px plain band above the hero's glow on a phone. */
+main:has(>.ai-page){margin-top:0}
 .ai-page>*{min-width:0}
 
 /* Headers */
