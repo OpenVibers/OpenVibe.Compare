@@ -10,6 +10,8 @@ const {mountBench}=require('./bench-mount');
  });
  server.keepAliveTimeout=65_000;
  if(bench) bench.start({port});
+ // Bench's own loopback address (its manifest's internalOrigin, 127.0.0.1:5230): Network's status probes it there.
+ if(bench) bench.listenOwn().then((s)=>{ if(s) console.log(`[OpenVibe.Compare] Bench also on ${bench.port}`); });
  let stopping=false;
  process.on('SIGTERM',()=>{
    if(stopping)return;stopping=true;
