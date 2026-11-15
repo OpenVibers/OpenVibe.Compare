@@ -75,9 +75,19 @@ test('with Bench mounted, Compare answers Bench\'s API behind its own routes', a
             req.on('error', reject); req.end();
         });
         assert.ok(!/"service":"compare"/.test(onBench), `Bench answers its own host (got ${onBench.slice(0, 80)})`);
+        // Bench's own loopback port (its manifest's internalOrigin): Bench's health there, not Compare's; stop closes it.
+        assert.equal(bench.port, 5230, 'Bench\'s port is its manifest\'s by default');
+        const benchOwn = await bench.listenOwn({ at: 0 });
+        assert.ok(benchOwn, 'Bench listens on a port of its own');
+        const ownBase = `http://127.0.0.1:${benchOwn.address().port}`;
+        const h = await (await fetch(`${ownBase}/api/health`)).text();
+        assert.ok(!/"service":"compare"/.test(h), `Bench answers its own port (got ${h.slice(0, 80)})`);
+        // A taken port is logged, not thrown.
+        assert.equal(await bench.listenOwn({ at: server.address().port }), null, 'a taken port leaves Compare running');
         // Bench's background work starts and stops; its database closes last.
         bench.start({ port: server.address().port });
         await bench.stop();
+        assert.equal(benchOwn.listening, false, 'Bench\'s own port is closed on stop');
     } finally {
         server.close();
         await network.close?.();
