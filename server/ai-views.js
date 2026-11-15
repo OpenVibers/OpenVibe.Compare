@@ -233,7 +233,7 @@ function hub(data = {}) {
         ] })
         + mineNote('Ran a benchmark yourself?')
         + scriptLd({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faq.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) })
-        + scriptLd({ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe AI model leaderboard', url: 'https://openvibe.compare/ai', variableMeasured: ['Bench rating', 'Provider price', 'Provider reply time', 'Provider uptime', 'Measured first token time', 'Measured tokens per second', 'Measured success rate'], distribution: { '@type': 'DataDownload', contentUrl: 'https://openvibe.compare/api/v1/comparisons/ai-models', encodingFormat: 'application/json' } });
+        + scriptLd({ '@context': 'https://schema.org', '@type': 'Dataset', name: 'AI model leaderboard', url: 'https://openvibe.compare/ai', variableMeasured: ['Bench rating', 'Provider price', 'Provider reply time', 'Provider uptime', 'Measured first token time', 'Measured tokens per second', 'Measured success rate'], distribution: { '@type': 'DataDownload', contentUrl: 'https://openvibe.compare/api/v1/comparisons/ai-models', encodingFormat: 'application/json' } });
     return page(`AI model leaderboard — ${month}`, `${rows.length} AI models compared: ratings from blind votes, provider prices and measured speed.`, body, '/ai');
 }
 
