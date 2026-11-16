@@ -127,7 +127,7 @@ function measuredCell(row, key) {
 }
 function measuredNote(data = {}) {
     if ((data.availability || []).some((x) => x.id === 'perf')) return '';
-    return `<p class="ai-fine">Measured columns: OpenVibe.Report's public model rows over 30 days, matched exactly to the model or its provider model name. A model needs 20 calls to be listed; a dash is not a zero. <a href="${PERF}">Report's open data</a>.</p>`;
+    return `<p class="ai-fine">Measured columns: OpenVibe.Report's public model rows over 30 days, matched exactly to the model or its provider model name. A model needs 20 calls to be listed; a dash is not a zero. ${siteLink(PERF, 'report', 'OpenVibe.Report', 'open data')}</p>`;
 }
 
 // ── The leaderboard table ──
@@ -288,6 +288,11 @@ function leaderboard(data = {}) {
 const ownServer = (p) => /^(local|whisper)$/i.test(String(p.provider || '')) || /on this host|\blocal\b/i.test(String(p.provider_name || ''));
 const providerName = (p) => ownServer(p) ? 'OpenVibe server' : String(p.provider_name || p.provider || 'Provider').replace(/\s*\((?:the |an? )[^)]*\)\s*$/i, '');
 const providerMark = (p) => ownServer(p) ? marks.mark('openvibe', { size: 24, label: false }) : marks.mark(p.provider || p.provider_name, { size: 24, label: false });
+/** A link to another OpenVibe site: its own mark, its name, what is there (the network's cross-site link, not bare text). */
+function siteLink(href, app, name, what) {
+    const icons = require('openvibe-shared/ov-icons');
+    return `<a class="ai-site-link" href="${esc(href)}"><span class="ai-site-mark" aria-hidden="true">${icons.appHtml(app, { size: 22 })}</span><span><b>${esc(name)}</b>${what ? ` ${esc(what)}` : ''}</span></a>`;
+}
 function providerTable(list) {
     const notUp = (p) => p.routed !== false && ['down', 'degraded'].includes(String(p.status || 'up'));
     const statusCell = (p) => {
@@ -306,6 +311,8 @@ function providerTable(list) {
         reply: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && p.speed && value(p.speed.p50_ms) != null ? `<b>${esc(ms(p.speed.p50_ms))}</b><small>p95 ${esc(ms(p.speed.p95_ms) || '–')}</small>` : quiet('Not measured yet'),
         errors: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && share(p.error_rate) != null ? `<b class="${Number(typeof p.error_rate === 'object' ? p.error_rate.value : p.error_rate) > 0.05 ? 'ai-bad' : ''}">${esc(share(p.error_rate))}</b>` : quiet('Not measured yet'),
         uptime: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && share(p.uptime) != null ? `<b class="${Number(p.uptime) < 0.95 ? 'ai-bad' : ''}">${esc(share(p.uptime))}</b>` : quiet('Not measured yet'),
+        // The rolling last day (AI #618: uptime_24h), first: how it is now. The week still says what happened.
+        day: p.routed === false ? quiet('Not routed here') : share(p.uptime_24h) != null ? `<b class="${Number(p.uptime_24h) < 0.95 ? 'ai-bad' : ''}">${esc(share(p.uptime_24h))}</b><small>${esc(share(1 - Number(p.uptime_24h)))} errors · ${Number(p.requests_24h || 0).toLocaleString('en-US')} calls</small>` : quiet(Number(p.requests_24h) > 0 ? 'Too few calls today' : 'Not measured yet'),
         requests: p.routed === false ? quiet('Not routed here') : measuredOffer(p) ? Number(p.requests_7d).toLocaleString('en-US') : quiet('Not measured yet'),
     }));
     return kit.table({
@@ -315,7 +322,8 @@ function providerTable(list) {
             list.some(notUp) && { key: 'status', label: 'Status', html: true },
             { key: 'price', label: 'Price per 1M', html: true },
             { key: 'reply', label: 'Reply time', html: true },
-            { key: 'errors', label: 'Errors', html: true },
+            list.some((p) => p.uptime_24h !== undefined) && { key: 'day', label: 'Uptime 24 h', html: true },
+            { key: 'errors', label: 'Errors 7 d', html: true },
             { key: 'uptime', label: 'Uptime 7 d', html: true },
             { key: 'requests', label: 'Requests 7 d', html: true },
         ].filter(Boolean),
@@ -372,15 +380,15 @@ function model(data = {}) {
             { measure: 'Tokens per second p50', p50: word.tps(self.measured.tps), calls: self.measured.calls == null ? 'Not reported' : String(self.measured.calls), date: self.measured.as_of ? String(self.measured.as_of).slice(0, 10) : '—' },
             { measure: 'Success rate', p50: word.rate(self.measured.success), calls: self.measured.calls == null ? 'Not reported' : String(self.measured.calls), date: self.measured.as_of ? String(self.measured.as_of).slice(0, 10) : '—' },
         ], label: 'Measured on real traffic', caption: 'OpenVibe.Report public model row, 30 days',
-    }) : `<p class="ai-fine">No measured row from OpenVibe.Report: a model is listed after 20 calls in 30 days, and a dash is not a zero. <a href="${PERF}">Report's open data</a>.</p>`;
+    }) : `<p class="ai-fine">No measured row from OpenVibe.Report: a model is listed after 20 calls in 30 days, and a dash is not a zero. ${siteLink(PERF, 'report', 'OpenVibe.Report', 'open data')}</p>`;
     const body = `<header class="ai-head ai-head--model"><p class="ai-kicker"><a href="/ai">AI comparison</a></p>`
         + `<div class="ai-model-head">${marks.mark(self.maker || id, { size: 56 })}<div><h1>${esc(shortName(id))}</h1><p class="ai-lede">${esc(maker || 'Maker not listed')}${tags(self) ? ` ${tags(self)}` : ''} · <code>${esc(id)}</code></p></div></div>`
         + facts + `</header>`
         + availabilityBlock(data)
-        + kit.section({ title: 'Providers', count: offers.length, body: providerTable(offers) })
-        + kit.section({ title: 'Measured on real traffic', count: self.measured ? 3 : null, body: measuredTable })
-        + kit.section({ title: 'Task ratings', count: tasks.length || null, body: taskTable + benchmarks })
-        + `<aside class="ai-try"><a class="ovk-btn ovk-btn--primary" href="https://openvibe.chat/vibe?models=${encodeURIComponent(id)}">Try it in Chat</a><a class="ovk-btn ovk-btn--quiet" href="https://openvibe.exchange/models/${encodeURIComponent(id)}">Use it from code</a></aside>`
+        + kit.section({ title: 'Providers', icon: 'server', count: offers.length, body: providerTable(offers) })
+        + kit.section({ title: 'Measured on real traffic', icon: 'gauge', count: self.measured ? 3 : null, body: measuredTable })
+        + kit.section({ title: 'Task ratings', icon: 'trophy', count: tasks.length || null, body: taskTable + benchmarks })
+        + `<aside class="ai-try">${kit.button({ href: `https://openvibe.chat/vibe?model=${encodeURIComponent(id)}&way=model`, label: `Chat with ${shortName(id)}`, icon: 'chat' })}${kit.button({ href: `https://openvibe.exchange/models/${encodeURIComponent(id)}`, label: 'Call it from code', icon: 'code', kind: 'quiet' })}</aside>`
         + mineNote('Ran this model yourself?');
     return page(`${shortName(id)} — AI model`, `${id}: rating, prices across providers and measured speed.`, body, idPath(id), [{ '@context': 'https://schema.org', '@type': 'Product', name: id, brand: maker || 'Unknown maker', url: `https://openvibe.compare${idPath(id)}` }]);
 }
