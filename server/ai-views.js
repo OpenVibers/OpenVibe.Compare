@@ -169,7 +169,8 @@ function dataLinks() {
 // ── /ai ──
 const PICK_LABELS = { overall: 'Best overall', value: 'Best value', fastest: 'Fastest', open: 'Best open weights', code: 'Best for code', writing: 'Best for writing', uncensored: 'Best uncensored 18+', free: 'Best free' };
 function pickNumber(id, row) {
-    if (id === 'value' || id === 'free') { const o = cheapest(row); return !o ? '' : Number(o.price.out) === 0 ? 'Free' : `${money(o.price.out)} per 1M out`; }
+    if (id === 'free') return 'Free to use now';
+    if (id === 'value') { const o = cheapest(row); return !o ? '' : Number(o.price.out) === 0 ? 'Free' : `${money(o.price.out)} per 1M out`; }
     if (id === 'fastest') { const o = fastest(row); return o ? `${ms(o.speed.p50_ms)} typical reply` : ''; }
     return rated(row) ? `Rating ${Math.round(row.rating.value)}` : '';
 }
@@ -181,19 +182,23 @@ function hub(data = {}) {
     const best = (list) => [...list].sort((a, b) => b.rating.value - a.rating.value)[0];
     const nz = (x) => x == null || x === '' ? NaN : Number(x);
     const cheapestOf = (r) => Math.min(...(r.provider_offers || []).map((o) => nz(o.price && o.price.out)).filter(Number.isFinite), Infinity);
-    const fastestOf = (r) => Math.min(...(r.provider_offers || []).filter((o) => Number(o.requests_7d) > 0).map((o) => nz(o.speed && o.speed.p50_ms)).filter(Number.isFinite), Infinity);
+    const fastestOf = (r) => Math.min(...(r.provider_offers || []).filter((o) => Number(o.requests_7d) >= 20).map((o) => nz(o.speed && o.speed.p50_ms)).filter(Number.isFinite), Infinity);
     const free = (r) => (r.provider_offers || []).some((o) => o.free === true || o.free_now === true || nz(o.price && o.price.out) === 0);
     const taskRows = (kind) => ratedRows.map((row) => { const task = row.task_ratings.find((x) => x.kind === kind && x.rating && x.rating.value != null); return task ? { ...row, kind, rating: task.rating, benchmark: task.benchmark } : null; }).filter(Boolean);
-    const choose = (id, model, why) => ({ id, model: model || null, why: model ? why : 'Not enough source data to establish this pick.' });
+    const MIN_RATED = 5;
+    const field = ratedRows.length >= MIN_RATED;
+    const choose = (id, model, why, needsField = true) => (needsField && !field
+        ? { id, model: null, why: `A pick needs ${MIN_RATED} rated models; ${ratedRows.length} so far.` }
+        : { id, model: model || null, why: model ? why : 'Not enough source data to establish this pick.' });
     const picks = [
         choose('overall', best(ratedRows), 'Highest rating from blind votes and open runs.'),
         choose('value', ratedRows.filter((r) => Number.isFinite(cheapestOf(r))).sort((a, b) => cheapestOf(a) - cheapestOf(b))[0], 'Lowest output price among rated models.'),
-        choose('fastest', chat.filter((r) => Number.isFinite(fastestOf(r))).sort((a, b) => fastestOf(a) - fastestOf(b))[0], 'Fastest typical reply on real traffic this week.'),
+        choose('fastest', chat.filter((r) => Number.isFinite(fastestOf(r))).sort((a, b) => fastestOf(a) - fastestOf(b))[0], 'Fastest typical reply on real traffic this week (20 calls or more).', false),
         choose('open', best(ratedRows.filter((r) => ['open', 'open_weights'].includes(r.weights))), 'Highest-rated model with open weights.'),
         choose('code', best(taskRows('code')), 'Highest rating on code tasks.'),
         choose('writing', best(taskRows('writing')), 'Highest rating on writing tasks.'),
         choose('uncensored', best(ratedRows.filter((r) => r.uncensored)), 'Highest-rated uncensored model; 18+.'),
-        choose('free', best(ratedRows.filter(free)) || chat.find(free), 'Free to use now through the Exchange.'),
+        choose('free', best(ratedRows.filter(free)) || chat.find(free), 'Free to use now through the Exchange.', false),
     ];
     const providers = data.providers || [];
     const tasks = data.tasks || [];
@@ -216,12 +221,12 @@ function hub(data = {}) {
         ['How often does this change?', 'Ratings and prices refresh within two minutes of the sources changing.'],
     ];
     const body = `<header class="ai-head"><p class="ai-kicker">AI comparison · ${esc(month)}</p><h1>AI model leaderboard — ${esc(month)}</h1>`
-        + `<p class="ai-lede">${rows.length} models from ${providerNames.size} providers. Ratings come from blind votes, prices from each provider's own page, and speed and uptime from real traffic. Measured first-token time, tokens per second and success come from OpenVibe.Report.</p>`
+        + `<p class="ai-lede">${rows.length.toLocaleString('en-US')} models from ${providerNames.size} providers. Ratings come from blind votes, prices from each provider's own page, and speed and uptime from real traffic. Measured first-token time, tokens per second and success come from OpenVibe.Report.</p>`
         + availabilityBlock(data)
         + kit.find({ action: '/ai/leaderboard', placeholder: 'Search a model or maker', label: 'Search models' })
         + kit.stats([[ratedRows.length, 'rated'], [rows.length, 'models listed'], [providerNames.size, 'providers'], [measuredOffers.length, 'measured endpoints']], { label: 'The leaderboard in numbers' })
         + `</header>`
-        + (pickList || pending.length ? kit.section({ title: 'Top picks', body: `${pickList ? `<ul class="ai-picks">${pickList}</ul>` : ''}${pending.length ? `<p class="ai-fine">Not enough data yet for ${esc(pending.join(', '))}.</p>` : ''}` }) : '')
+        + (pickList || pending.length ? kit.section({ title: 'Top picks', body: `${pickList ? `<ul class="ai-picks">${pickList}</ul>` : ''}${pending.length ? `<p class="ai-fine">Not enough data yet for ${esc(pending.join(', '))}${field ? '' : ` (a pick needs ${MIN_RATED} rated models; ${ratedRows.length} so far: vote or run one on OpenVibe.Bench)`}.</p>` : ''}` }) : '')
         + kit.section({ title: 'Harness and model, apart', body: `<p class="ai-fine">A coding agent is a harness driving a model, and the harness can move a score as much as the model. Bench fits the two apart, with an interval on each harness effect. Every agent number here names its harness.</p><ul class="ai-chips"><li><a href="/ai/harnesses">Harness effects</a></li><li><a href="/ai/matrix">Harness × model matrix</a></li><li><a href="/ai/method">How the fit works</a></li><li><a href="/ai/ways">Ways to work a task</a></li></ul>` })
         // A phone shows the parts below the top picks one at a time as tabs; every part stays in the HTML.
         + parts({ name: 'board', label: 'The leaderboard\'s parts', items: [
