@@ -185,3 +185,15 @@ main:has(>.ai-page){margin-top:0}
 
 /* The leaderboard's pages (11-14). */
 .ai-pager{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:16px 0 0;color:var(--text-muted)}
+
+/* A link to another OpenVibe site (the owner, 11-16: "Report's own data … doesn't use our cross-site links"): the site's
+   mark and name in a chip that answers the hover. */
+.ai-site-link { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; margin: 6px 0 0; padding: 4px 12px 4px 6px; border: 1px solid var(--ovk-line, rgba(148, 163, 184, .2)); border-radius: 999px; background: var(--ovk-panel-2, rgba(148, 163, 184, .08)); color: var(--ovk-text, #e6edf7); text-decoration: none; vertical-align: middle; transition: border-color .2s, transform .2s; }
+.ai-site-link:hover { border-color: var(--ovk-accent, #3b82f6); transform: translateY(calc(-1px * var(--ov-move, 1))); }
+.ai-site-link b { font-weight: 700; }
+.ai-site-mark { display: grid; place-items: center; width: 28px; height: 28px; }
+.ai-site-mark > * { display: block; }
+/* The two actions: equal, with their icons, on one row (two rows on a narrow phone). */
+.ai-try { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+.ai-try .ovk-btn { width: 100%; min-height: 48px; gap: 10px; font-size: 1rem; }
+.ai-try .ovk-btn .ovk-i { width: 22px; height: 22px; }
