@@ -65,7 +65,11 @@ test('the page shows both layouts, the source line, the cheapest of each kind, e
     const html = computeViews.body(compute, {});
     assert.match(html, /compute-cards/);
     assert.match(html, /compute-table/);
-    assert.match(html, /Data from <a href="https:\/\/openvibe\.exchange\/compute">OpenVibe\.Exchange<\/a>/);
+    // The source as a cross-site link with the site's own mark (the owner, 11-16: "custom links … site icons with them").
+    assert.match(html, /Data from<\/span> <a class="ai-site-link" href="https:\/\/openvibe\.exchange\/compute"><span class="ai-site-mark"[^>]*>[\s\S]*?<b>OpenVibe\.Exchange<\/b>/);
+    assert.match(html, /class="compute-chip"><input type="radio" name="kind" value="gpu"/, 'Kind as chips');
+    assert.match(html, /class="compute-best"[\s\S]*Cheapest GPU[\s\S]*\$0\.57/, 'the cheapest GPU as a card');
+    assert.doesNotMatch(html.split('compute-cards')[1].split('compute-table')[0], /Use it on OpenVibe/, 'not repeated on every card');
     assert.match(html, /checked 1 day ago/);
     assert.match(html, /Cheapest GPU/);
     assert.match(html, /Cheapest computer/);

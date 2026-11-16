@@ -293,11 +293,7 @@ function leaderboard(data = {}) {
 const ownServer = (p) => /^(local|whisper)$/i.test(String(p.provider || '')) || /on this host|\blocal\b/i.test(String(p.provider_name || ''));
 const providerName = (p) => ownServer(p) ? 'OpenVibe server' : String(p.provider_name || p.provider || 'Provider').replace(/\s*\((?:the |an? )[^)]*\)\s*$/i, '');
 const providerMark = (p) => ownServer(p) ? marks.mark('openvibe', { size: 24, label: false }) : marks.mark(p.provider || p.provider_name, { size: 24, label: false });
-/** A link to another OpenVibe site: its own mark, its name, what is there (the network's cross-site link, not bare text). */
-function siteLink(href, app, name, what) {
-    const icons = require('openvibe-shared/ov-icons');
-    return `<a class="ai-site-link" href="${esc(href)}"><span class="ai-site-mark" aria-hidden="true">${icons.appHtml(app, { size: 22 })}</span><span><b>${esc(name)}</b>${what ? ` ${esc(what)}` : ''}</span></a>`;
-}
+const { siteLink } = require('./site-link');
 function providerTable(list) {
     const notUp = (p) => p.routed !== false && ['down', 'degraded'].includes(String(p.status || 'up'));
     const statusCell = (p) => {
