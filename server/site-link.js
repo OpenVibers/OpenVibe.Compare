@@ -9,7 +9,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 /** siteLink('https://openvibe.exchange/compute', 'exchange', 'OpenVibe.Exchange', 'compute prices') */
 function siteLink(href, app, name, what = '') {
-    return `<a class="ai-site-link" href="${esc(href)}"><span class="ai-site-mark" aria-hidden="true">${icons.appHtml(app, { size: 22 })}</span><span><b>${esc(name)}</b>${what ? ` ${esc(what)}` : ''}</span></a>`;
+    return `<a class="ai-site-link" href="${esc(href)}"><span class="ai-site-mark" aria-hidden="true">${icons.appHtml(app, { size: 32 })}</span><span><b>${esc(name)}</b>${what ? ` ${esc(what)}` : ''}</span></a>`;
 }
 
 module.exports = { siteLink };

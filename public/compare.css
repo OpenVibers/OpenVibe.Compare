@@ -134,3 +134,19 @@ main a,main summary{overflow-wrap:anywhere}
 .ai-site-link{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:4px 12px 4px 6px;border:1px solid var(--ovk-line,rgba(148,163,184,.2));border-radius:999px;background:var(--ovk-panel-2,rgba(148,163,184,.08));color:var(--ovk-text,#e6edf7);text-decoration:none;vertical-align:middle;transition:border-color .2s,transform .2s}
 .ai-site-link:hover{border-color:var(--ovk-accent,#3b82f6);transform:translateY(calc(-1px * var(--ov-move,1)))}
 .ai-site-mark{display:grid;place-items:center;width:28px;height:28px}
+
+/* Icons fill their place (the owner, 11-16: "icons … still not center … not using the right amount of space … this can't
+   happen anymore"; openvibe.design icons-fill-their-place): 20 px beside words, about 60 % of a tile's side, a site's mark
+   28 px in its chip; every icon a centred grid cell, never nudged. */
+.compute-json svg,.compute-chip svg,.compute-reset svg,.compute-sort a svg,.compute-act svg{width:20px;height:20px;flex:none}
+.compute-best-ic{width:48px;height:48px;border-radius:14px}
+.compute-best-ic svg{width:28px;height:28px}
+.compute-best{grid-template-columns:48px minmax(0,1fr)}
+.ai-site-link{gap:10px;padding:4px 14px 4px 5px}
+.ai-site-mark{width:32px;height:32px}
+.ai-site-mark .ov-appicon{--ova-size:32px!important;width:32px;height:32px}
+.ai-site-mark .ov-appicon>.ov-icon svg{left:-22%;top:-22%;width:144%;height:144%;max-width:none;max-height:none}
+.compute-prov{width:36px;height:36px;font-size:1.05rem}
+.ovk-heading-icon{width:44px;height:44px}.ovk-heading-icon svg{width:26px;height:26px}
+.ovk-heading-icon > svg.ovk-i{width:26px;height:26px}
+.compute-best-ic svg{width:30px;height:30px}
