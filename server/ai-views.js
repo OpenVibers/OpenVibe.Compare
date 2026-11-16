@@ -222,7 +222,7 @@ function hub(data = {}) {
         + kit.stats([[ratedRows.length, 'rated'], [rows.length, 'models listed'], [providerNames.size, 'providers'], [measuredOffers.length, 'measured endpoints']], { label: 'The leaderboard in numbers' })
         + `</header>`
         + (pickList || pending.length ? kit.section({ title: 'Top picks', body: `${pickList ? `<ul class="ai-picks">${pickList}</ul>` : ''}${pending.length ? `<p class="ai-fine">Not enough data yet for ${esc(pending.join(', '))}.</p>` : ''}` }) : '')
-        + kit.section({ title: 'Harness and model, apart', body: `<p class="ai-fine">A coding agent is a harness driving a model, and the harness can move a score as much as the model. Bench fits the two apart, with an interval on each harness effect. Every agent number here names its harness.</p><ul class="ai-chips"><li><a href="/ai/harnesses">Harness effects</a></li><li><a href="/ai/matrix">Harness × model matrix</a></li><li><a href="/ai/method">How the fit works</a></li></ul>` })
+        + kit.section({ title: 'Harness and model, apart', body: `<p class="ai-fine">A coding agent is a harness driving a model, and the harness can move a score as much as the model. Bench fits the two apart, with an interval on each harness effect. Every agent number here names its harness.</p><ul class="ai-chips"><li><a href="/ai/harnesses">Harness effects</a></li><li><a href="/ai/matrix">Harness × model matrix</a></li><li><a href="/ai/method">How the fit works</a></li><li><a href="/ai/ways">Ways to work a task</a></li></ul>` })
         // A phone shows the parts below the top picks one at a time as tabs; every part stays in the HTML.
         + parts({ name: 'board', label: 'The leaderboard\'s parts', items: [
             { id: 'leaderboard', label: 'Leaderboard', count: chat.length, html: kit.section({ title: 'Leaderboard', count: chat.length, actions: [act('/ai/leaderboard', chat.length > 25 ? `All ${chat.length} models` : 'Filter and sort')], body: board(chat.slice(0, 25)) + (others ? `<p class="ai-fine">Chat models only. ${others} embedding and speech ${others === 1 ? 'model is' : 'models are'} in the <a href="/ai/leaderboard?type=all">full list</a>.</p>` : '') + dataLinks() + measuredNote(data) }) },
@@ -810,6 +810,36 @@ function benchmarkPage(data = {}) {
     return page(`${meta.title}: AI benchmark`, `${meta.title}: verified AI results, cost and speed from OpenVibe.Bench.`, body, `/ai/${encodeURIComponent(meta.id)}`);
 }
 
+// ── /ai/ways: the ways to work a task, from OpenVibe.Actor's comparisons (11-16) ──
+const ACTOR = 'https://openvibe.actor';
+function ways(data = {}) {
+    const list = Array.isArray(data.engines) ? data.engines : null;
+    const secs = (x) => value(x) == null ? null : Number(x) < 60 ? `${Number(x)} s` : `${Math.floor(Number(x) / 60)} min ${Math.round(Number(x) % 60)} s`;
+    const columns = [
+        { key: 'way', label: 'Way', html: true }, { key: 'runs', label: 'Runs', html: true }, { key: 'best', label: 'Best', html: true },
+        { key: 'score', label: 'Score (0–4)', html: true }, { key: 'time', label: 'Time p50', html: true }, { key: 'cost', label: 'Cost', html: true },
+    ];
+    const rows = (list || []).map((x) => ({
+        way: `<b>${esc(x.label || (x.engine && x.engine.kind) || 'A way')}</b>`,
+        runs: `<span class="ai-cell">${esc(String(Number(x.runs) || 0))}</span>`,
+        best: `<span class="ai-cell">${esc(String(Number(x.wins) || 0))}</span>`,
+        score: value(x.mean_score) == null ? quiet('Not graded yet') : `<span class="ai-cell"><b>${esc(Number(x.mean_score).toFixed(2))}</b></span>`,
+        time: secs(x.median_seconds) ? `<span class="ai-cell">${esc(secs(x.median_seconds))}</span>` : quiet('—'),
+        cost: money(x.mean_cost_usd) ? `<span class="ai-cell">${esc(money(x.mean_cost_usd))}</span>` : quiet('—'),
+    }));
+    const lede = 'One task, worked several ways side by side on OpenVibe.Actor: its agent on a model, one model on its own, the Decisions API, a coding harness, OpenAI\'s agent or the open model. Every answer is graded on the same rubric, 0 (wrong) to 4 (excellent), by OpenVibe.AI\'s Decisions API; these are the totals.';
+    const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>Ways to work a task</h1><p class="ai-lede">${esc(lede)}</p></header>`
+        + (data.stale ? `<p class="ai-fine" role="status">OpenVibe.Actor is unavailable. Showing the last good copy, read ${esc(String(data.read_at || '').slice(0, 16).replace('T', ' '))} UTC.</p>` : '')
+        + (list === null
+            ? `<p class="ai-note">The comparisons could not be read just now. <a href="${ACTOR}/compare">See them on OpenVibe.Actor</a>.</p>`
+            : !list.length
+                ? `<p class="ai-note">No comparison has been graded yet. <a href="${ACTOR}/compare">Run one on OpenVibe.Actor</a>: your task, two to six ways, each answer graded, and the totals land here.</p>`
+                : kit.section({ title: 'Leaderboard', count: list.length, actions: [act(`${ACTOR}/compare`, 'Compare your own task')], body: kit.table({ columns, rows, label: 'Ways to work a task', empty: 'No way has run yet.' }).replace('class="ovk-table"', 'class="ovk-table ai-board"') }))
+        + `<p class="ai-fine">Models on their own are ranked in the <a href="/ai/leaderboard">leaderboard</a>; harnesses apart from their models in <a href="/ai/harnesses">harness effects</a>. The data: <a href="${ACTOR}/api/v1/engines/leaderboard">JSON</a>.</p>`;
+    return page('Ways to work a task — AI', 'Actor\'s agent, one model, the Decisions API, a coding harness, OpenAI\'s agent and the open model compared on the same tasks: runs, wins, score, time and cost.', body, '/ai/ways',
+        [{ '@context': 'https://schema.org', '@type': 'Dataset', name: 'OpenVibe ways to work a task', url: 'https://openvibe.compare/ai/ways' }]);
+}
+
 function methodPage(data = {}) {
     const o = readData(data.overview) || {};
     const list = data.kinds && data.kinds.data && Array.isArray(data.kinds.data.kinds) ? data.kinds.data.kinds : [];
@@ -862,6 +892,6 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
 }
 
 module.exports = {
-    hub, leaderboard, providers, model, compare, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix,
+    hub, leaderboard, providers, model, compare, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix, ways,
     availabilityBlock, measuredNote, benchState, page, scriptLd, PARTS_CSS,
 };
