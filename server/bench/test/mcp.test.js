@@ -120,6 +120,27 @@ const rpc = (method, params, id = 1) => ({ jsonrpc: '2.0', id, method, ...(param
         assert.ok(r.json().result.structuredContent.revealed.left.model, 'revealed after the vote');
     });
 
+    // MCP 2026-07-28 (stateless; 2026-11-16, openvibe-sdk/mcp): the version and the method on every request,
+    // server/discover, resultType on every result, a cacheable tool list; the handshake above still works.
+    await check('MCP 2026-07-28 is spoken beside the handshake', async () => {
+        const mcpKit = require('openvibe-sdk/mcp');
+        const modern = (method, params = {}, extra = {}) => {
+            const built = mcpKit.modernRequest({ id: 60, method, params, clientInfo: { name: 'test', version: '1' } });
+            const headers = Object.fromEntries(Object.entries(built.headers).filter(([k]) => k.toLowerCase() !== 'content-type'));
+            return t.get('/mcp', { json: built.body, headers: { ...headers, ...extra } });
+        };
+        let r = await modern('server/discover');
+        assert.strictEqual(r.status, 200, r.text);
+        assert.deepStrictEqual([r.json().result.resultType, r.json().result.cacheScope], ['complete', 'public']);
+        assert.ok(r.json().result.supportedVersions.includes('2026-07-28') && r.json().result.supportedVersions.includes('2025-06-18'));
+        r = await modern('tools/list');
+        assert.deepStrictEqual([r.status, r.json().result.resultType, r.json().result.cacheScope], [200, 'complete', 'public']);
+        r = await modern('tools/list', {}, { 'Mcp-Method': 'tools/call' });
+        assert.deepStrictEqual([r.status, r.json().error.code], [400, -32020], 'a header that disagrees is refused');
+        r = await modern('resources/list');
+        assert.deepStrictEqual([r.status, r.json().error.code], [404, -32601], 'an unknown method is a 404');
+    });
+
     await check('stop', async () => { await t.close(); });
 
     done();
