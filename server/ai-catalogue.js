@@ -17,7 +17,23 @@ function createAiCatalogue({ config = {}, fetchImpl = globalThis.fetch, log = co
     let hit = null;
     let pending = null;
 
-    async function catalog() {
+    // 2026-11-16: the catalog over another window (?window=24h, 30d, all; AI #627), held like the week's.
+    const windowHits = new Map();
+    const windowPending = new Map();
+    async function windowCatalog(window) {
+        const h = windowHits.get(window);
+        if (h && h.expires > now()) return h.value;
+        if (!windowPending.has(window)) windowPending.set(window, (async () => {
+            const data = await requestJson(`${baseUrl}/api/v1/exchange/catalog?window=${encodeURIComponent(window)}`, { fetchImpl, log, label: 'ai exchange catalog', timeoutMs });
+            const ok = data && Array.isArray(data.models) && data.window === window;
+            if (ok) windowHits.set(window, { value: data, expires: now() + TTL_MS });
+            return ok ? data : (h ? h.value : null);
+        })().finally(() => windowPending.delete(window)));
+        return windowPending.get(window);
+    }
+
+    async function catalog(window = '7d') {
+        if (window && window !== '7d') return windowCatalog(window);
         if (hit && hit.expires > now()) return hit.value;
         if (!pending) pending = (async () => {
             const data = await requestJson(`${baseUrl}/api/v1/exchange/catalog`, { fetchImpl, log, label: 'ai exchange catalog', timeoutMs });

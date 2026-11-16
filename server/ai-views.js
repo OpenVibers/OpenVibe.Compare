@@ -294,7 +294,21 @@ const ownServer = (p) => /^(local|whisper)$/i.test(String(p.provider || '')) || 
 const providerName = (p) => ownServer(p) ? 'OpenVibe server' : String(p.provider_name || p.provider || 'Provider').replace(/\s*\((?:the |an? )[^)]*\)\s*$/i, '');
 const providerMark = (p) => ownServer(p) ? marks.mark('openvibe', { size: 24, label: false }) : marks.mark(p.provider || p.provider_name, { size: 24, label: false });
 const { siteLink } = require('./site-link');
-function providerTable(list) {
+// The windows the measured columns cover (AI's catalog ?window=): 24 h first; the week is the default and the plain
+// address (most offers see too few calls in a day to measure).
+const WINDOWS = [['24h', '24 h'], ['7d', '7 d'], ['30d', '30 d'], ['all', 'all time']];
+const WINDOW_NAMES = { '24h': '24 hours', '7d': '7 days', '30d': '30 days', all: 'All time' };
+const windowOf = (query) => { const w = query && query.window != null ? String(query.window).toLowerCase() : ''; return WINDOWS.some((x) => x[0] === w) ? w : '7d'; };
+function windowSwitch(path, current) {
+    return kit.tabs({ items: WINDOWS.map(([key]) => ({ key, label: WINDOW_NAMES[key], href: `${path}${key === '7d' ? '' : `?window=${key}`}` })), active: current, label: 'Measured over' });
+}
+/** providerTable(list, { window, figures, path }): figures maps `${model}|${provider}` to the window's numbers. */
+function providerTable(list, { window = '7d', figures = null, path = '' } = {}) {
+    const w = figures ? window : '7d';
+    const short = (WINDOWS.find((x) => x[0] === w) || WINDOWS[1])[1];
+    // The week's figures are the offer's own; another window's come from that window's catalog (nothing there: unmeasured).
+    const fig = (p) => (w === '7d' ? { uptime: p.uptime, error_rate: p.error_rate, requests: p.requests_7d, speed: p.speed } : (figures.get(`${p.model}|${p.provider}`) || {}));
+    const measured = (p) => p.routed !== false && Number(fig(p).requests) > 0;
     const notUp = (p) => p.routed !== false && ['down', 'degraded'].includes(String(p.status || 'up'));
     const statusCell = (p) => {
         if (p.routed === false) return quiet('Not routed here');
@@ -309,33 +323,33 @@ function providerTable(list) {
         model: `<a href="${idPath(p.model)}">${esc(shortName(p.model))}</a>`,
         status: statusCell(p),
         price: p.price && value(p.price.out) != null ? `<b>${esc(money(p.price.out))}</b> out · ${esc(money(p.price.in) || '–')} in` : quiet('No price listed'),
-        reply: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && p.speed && value(p.speed.p50_ms) != null ? `<b>${esc(ms(p.speed.p50_ms))}</b><small>p95 ${esc(ms(p.speed.p95_ms) || '–')}</small>` : quiet('Not measured yet'),
-        errors: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && share(p.error_rate) != null ? `<b class="${Number(typeof p.error_rate === 'object' ? p.error_rate.value : p.error_rate) > 0.05 ? 'ai-bad' : ''}">${esc(share(p.error_rate))}</b>` : quiet('Not measured yet'),
-        uptime: p.routed === false ? quiet('Not routed here') : measuredOffer(p) && share(p.uptime) != null ? `<b class="${Number(p.uptime) < 0.95 ? 'ai-bad' : ''}">${esc(share(p.uptime))}</b>` : quiet('Not measured yet'),
+        reply: p.routed === false ? quiet('Not routed here') : measured(p) && fig(p).speed && value(fig(p).speed.p50_ms) != null ? `<b>${esc(ms(fig(p).speed.p50_ms))}</b><small>p95 ${esc(ms(fig(p).speed.p95_ms) || '–')}</small>` : quiet('Not measured yet'),
+        errors: p.routed === false ? quiet('Not routed here') : measured(p) && share(fig(p).error_rate) != null ? `<b class="${Number(typeof fig(p).error_rate === 'object' ? fig(p).error_rate.value : fig(p).error_rate) > 0.05 ? 'ai-bad' : ''}">${esc(share(fig(p).error_rate))}</b>` : quiet('Not measured yet'),
+        uptime: p.routed === false ? quiet('Not routed here') : measured(p) && share(fig(p).uptime) != null ? `<b class="${Number(fig(p).uptime) < 0.95 ? 'ai-bad' : ''}">${esc(share(fig(p).uptime))}</b>` : quiet('Not measured yet'),
         // The rolling last day (AI #618: uptime_24h), first: how it is now. The week still says what happened.
         day: p.routed === false ? quiet('Not routed here') : share(p.uptime_24h) != null ? `<b class="${Number(p.uptime_24h) < 0.95 ? 'ai-bad' : ''}">${esc(share(p.uptime_24h))}</b><small>${esc(share(1 - Number(p.uptime_24h)))} errors · ${Number(p.requests_24h || 0).toLocaleString('en-US')} calls</small>` : quiet(Number(p.requests_24h) > 0 ? 'Too few calls today' : 'Not measured yet'),
-        requests: p.routed === false ? quiet('Not routed here') : measuredOffer(p) ? Number(p.requests_7d).toLocaleString('en-US') : quiet('Not measured yet'),
+        requests: p.routed === false ? quiet('Not routed here') : measured(p) ? Number(fig(p).requests).toLocaleString('en-US') : quiet('Not measured yet'),
     }));
-    return kit.table({
+    return (path ? windowSwitch(path, w) : '') + kit.table({
         columns: [
             { key: 'provider', label: 'Provider', primary: true, html: true },
             { key: 'model', label: 'Model', html: true },
             list.some(notUp) && { key: 'status', label: 'Status', html: true },
             { key: 'price', label: 'Price per 1M', html: true },
             { key: 'reply', label: 'Reply time', html: true },
-            list.some((p) => p.uptime_24h !== undefined) && { key: 'day', label: 'Uptime 24 h', html: true },
-            { key: 'errors', label: 'Errors 7 d', html: true },
-            { key: 'uptime', label: 'Uptime 7 d', html: true },
-            { key: 'requests', label: 'Requests 7 d', html: true },
+            w !== '24h' && list.some((p) => p.uptime_24h !== undefined) && { key: 'day', label: 'Uptime 24 h', html: true },
+            { key: 'errors', label: `Errors ${short}`, html: true },
+            { key: 'uptime', label: `Uptime ${short}`, html: true },
+            { key: 'requests', label: `Requests ${short}`, html: true },
         ].filter(Boolean),
         rows: rows.map((d) => Object.fromEntries(Object.entries(d).map(([k, val]) => [k, k === 'provider' ? val : `<span class="ai-cell">${val}</span>`]))), label: 'Providers', empty: 'No provider is listed yet.',
     });
 }
-function providers(data = {}) {
+function providers(data = {}, { window = '7d', figures = null } = {}) {
     const sorted = [...(data.providers || [])].sort((a, b) => (Number(b.requests_7d) || 0) - (Number(a.requests_7d) || 0));
     const body = `<header class="ai-head ai-head--page"><p class="ai-kicker"><a href="/ai">AI comparison</a></p><h1>AI providers</h1>`
         + `<p class="ai-lede">Every model and provider offer in the market. Prices come from each provider's own page. Reply time, errors and uptime are measured on real requests over the last seven days; offers outside the router say “Not routed here”, while routed offers without measurements say “Not measured yet”. Status is measured from the Exchange catalogue: down while an offer's circuit is open, degraded when more than 5% of at least 10 requests in the last hour failed, with the plain reason.</p></header>`
-        + availabilityBlock(data) + providerTable(sorted.slice(0, PROVIDERS_SHOWN))
+        + availabilityBlock(data) + providerTable(sorted.slice(0, PROVIDERS_SHOWN), { window, figures, path: '/ai/providers' })
         // Every offer with traffic is in the first rows (sorted by requests); the market's thousands of priced offers
         // beyond them are a search away, not 27 MB of one page (11-14).
         + (sorted.length > PROVIDERS_SHOWN ? `<p class="ai-fine">${(sorted.length - PROVIDERS_SHOWN).toLocaleString('en-US')} more priced offers: <a href="/ai/leaderboard?sort=price">find a model on the leaderboard</a> to see its providers.</p>` : '');
@@ -343,7 +357,7 @@ function providers(data = {}) {
 }
 
 // ── /ai/models/:id ──
-function model(data = {}) {
+function model(data = {}, { window = '7d', figures = null } = {}) {
     const id = data.id;
     const detail = readData(data.detail) || {};
     const row = data.row || null;
@@ -386,7 +400,7 @@ function model(data = {}) {
         + `<div class="ai-model-head">${marks.mark(self.maker || id, { size: 56 })}<div><h1>${esc(shortName(id))}</h1><p class="ai-lede">${esc(maker || 'Maker not listed')}${tags(self) ? ` ${tags(self)}` : ''} · <code>${esc(id)}</code></p></div></div>`
         + facts + `</header>`
         + availabilityBlock(data)
-        + kit.section({ title: 'Providers', icon: 'server', count: offers.length, body: providerTable(offers) })
+        + kit.section({ title: 'Providers', icon: 'server', count: offers.length, body: providerTable(offers, { window, figures, path: idPath(id) }) })
         + kit.section({ title: 'Measured on real traffic', icon: 'gauge', count: self.measured ? 3 : null, body: measuredTable })
         + kit.section({ title: 'Task ratings', icon: 'trophy', count: tasks.length || null, body: taskTable + benchmarks })
         + `<aside class="ai-try">${kit.button({ href: `https://openvibe.chat/vibe?model=${encodeURIComponent(id)}&way=model`, label: `Chat with ${shortName(id)}`, icon: 'chat' })}${kit.button({ href: `https://openvibe.exchange/models/${encodeURIComponent(id)}`, label: 'Call it from code', icon: 'code', kind: 'quiet' })}</aside>`
@@ -901,6 +915,7 @@ function rss({ runs, overview, base = 'https://openvibe.compare' } = {}) {
 }
 
 module.exports = {
+    windowOf,
     hub, leaderboard, providers, model, compare, boardPage, benchmarkPage, methodPage, rss, harnesses, matrix, ways,
     availabilityBlock, measuredNote, benchState, page, scriptLd, PARTS_CSS,
 };

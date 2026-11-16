@@ -70,7 +70,10 @@ function aiStubFetch({benchDown=false,perfDown=false,marketDown=false}={}) {
  return async (url)=>{
   const p=new URL(url).pathname;
   if(benchDown)throw Error('offline');
-  if(p==='/api/v1/exchange/catalog')return aiResponse(aiCatalogue);
+  if(p==='/api/v1/exchange/catalog'){const w=new URL(url).searchParams.get('window');
+   // 2026-11-16 (AI #627): another window answers with its own figures and names itself.
+   if(w)return aiResponse({...aiCatalogue,window:w,models:aiCatalogue.models.map(m=>({...m,offers:m.offers.map(o=>({...o,requests_7d:undefined,requests:120,uptime:0.75,error_rate:0.25}))}))});
+   return aiResponse(aiCatalogue);}
   if(p==='/api/v1/exchange/market'){if(marketDown)throw Error('offline');return aiResponse(aiMarket);}
   if(p==='/api/v1/ai/performance'){if(perfDown)throw Error('offline');return aiResponse(aiPerf);}
   if(p==='/api/v1/kinds')return aiResponse({count:1,kinds:[aiKind]});
@@ -118,6 +121,25 @@ test('each /ai page answers 200 from stubbed sources, measured columns sit besid
   const model=await (await fetch(base+'/ai/models/maker%2Falpha')).text();assert.match(model,/first token p50/);assert.match(model,/tokens\/s p50/);assert.match(model,/success/);assert.match(model,/240 ms/);assert.match(model,/45\.2 tok\/s/);assert.match(model,/98\.0%/);assert.match(model,/canonical" href="https:\/\/openvibe.compare\/ai\/models\/maker%2Falpha/);
   const feed=await (await fetch(base+'/ai/feed.xml')).text();assert.match(feed,/https:\/\/openvibe.compare\/ai\//);assert.doesNotMatch(feed,/openvibe\.report\/ai/);
   assert.equal((await fetch(base+'/ai/nope')).status,404);
+ }finally{await new Promise(r=>server.close(r));}
+});
+test('providers and a model over a window: 24 h first, the week by default, each column labelled (?window=)',async()=>{
+ // The owner, 11-16: "maybe 30 days, 7 days … all time … be transparent".
+ const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
+ try {
+  const week=await (await fetch(base+'/ai/providers')).text();
+  assert.match(week,/aria-label="Measured over"/);
+  assert.ok(week.indexOf('24 hours')<week.indexOf('7 days')&&week.indexOf('7 days')<week.indexOf('30 days'),'24 h first');
+  assert.match(week,/href="\/ai\/providers" aria-current="page"/,'the week is the plain address and open by default');
+  assert.match(week,/Uptime 7 d/);assert.match(week,/99\.0%/);
+  const month=await (await fetch(base+'/ai/providers?window=30d')).text();
+  assert.match(month,/href="\/ai\/providers\?window=30d" aria-current="page"/);
+  assert.match(month,/Uptime 30 d/);assert.match(month,/Errors 30 d/);assert.match(month,/Requests 30 d/);
+  assert.match(month,/75\.0%/);assert.match(month,/>120</,'the window\'s uptime and requests');
+  const model=await (await fetch(base+'/ai/models/maker%2Falpha?window=all')).text();
+  assert.match(model,/Uptime all time/);assert.match(model,/75\.0%/);
+  assert.match(model,/href="\/ai\/models\/maker%2Falpha\?window=all" aria-current="page"/);
+  const odd=await (await fetch(base+'/ai/providers?window=1y')).text();assert.match(odd,/Uptime 7 d/,'an unknown window is the week');
  }finally{await new Promise(r=>server.close(r));}
 });
 test('a source down still answers 200 with words; the pair and old AI URLs 301',async()=>{
