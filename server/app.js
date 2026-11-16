@@ -82,7 +82,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  }));
  app.get('/ai/compare/:pair',wrap(async(req,res)=>{
    const match=String(req.params.pair).match(/^(.+)-vs-(.+)$/);
-   if(!match)return res.sendStatus(404);
+   if(!match)return notHere(res);
    const ordered=[decodeURIComponent(match[1]),decodeURIComponent(match[2])].sort();
    const canonical=`/ai/compare/${encodeURIComponent(ordered[0])}-vs-${encodeURIComponent(ordered[1])}`;
    if(req.path!==canonical)return res.redirect(301,canonical);
@@ -94,23 +94,30 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  app.get('/ai/:ref',wrap(async(req,res)=>{const ref=String(req.params.ref||'');const bench=ai.isBenchmarkId(ref);const data=bench?await ai.benchmarkPage(ref):await ai.kindBoard(ref,ai.normaliseTab(req.query.tab));if(!data)return res.sendStatus(404);return res.send(bench?aiViews.benchmarkPage(data):aiViews.boardPage(data));}));
  app.get('/comparisons/ai-models',(_q,r)=>r.redirect(301,'/ai'));
  app.get('/comparisons/:slug',wrap(async(req,res)=>{
-   const c=(await getData()).find(c=>c.slug===req.params.slug);if(!c)return res.sendStatus(404);res.vary('Accept');
+   const c=(await getData()).find(c=>c.slug===req.params.slug);if(!c)return notHere(res);res.vary('Accept');
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(v.markdown(c));
    const weights=Object.fromEntries(c.criteria.filter(k=>req.query[`w.${k.id}`]!==undefined).map(k=>[k.id,req.query[`w.${k.id}`]]));
    res.send(v.page(c.title,v.comparison(c,weights),req.path,[{'@context':'https://schema.org','@type':'Dataset',name:c.title,description:c.summary,url:`https://openvibe.compare${req.path}`,dateModified:c.updated_at,creator:{'@type':'Organization',name:'OpenVibe'},distribution:{'@type':'DataDownload',encodingFormat:'application/json',contentUrl:`https://openvibe.compare/api/v1/comparisons/${c.slug}`}}]));
  }));
  app.get('/models/:org/:model',(req,res)=>res.redirect(301,`/ai/models/${encodeURIComponent(`${req.params.org}/${req.params.model}`)}`));
+ // Not here: the site's own page with ways on, never a bare "Not Found" (the owner, 11-16, on a How it ranks link).
+ const notHere=(res,what='This page')=>res.status(404).send(v.page('Not found',`<section class="ov-empty"><h1>${v.esc(what)} is not here</h1><p>It may have moved, or the address has a typo.</p><p><a href="/ai">AI models compared</a> · <a href="/ai/leaderboard">The leaderboard</a> · <a href="/">Every comparison</a></p></section>`,'/',[],{description:'Not found on OpenVibe.Compare.'}));
  app.get('/things/:id',wrap(async(req,res)=>{
    const all=await getData();
    const aiModels=all.find(c=>c.slug==='ai-models');
    if(aiModels && aiModels.things.some(t=>t.id===req.params.id))return res.redirect(301,`/ai/models/${encodeURIComponent(req.params.id)}`);
-   const cs=all.filter(c=>c.things.some(t=>t.id===req.params.id));if(!cs.length)return res.sendStatus(404);
+   const cs=all.filter(c=>c.things.some(t=>t.id===req.params.id));
+   if(!cs.length){
+     // A model's id from Exchange or another site ("openai/gpt-5-nano", "openai:gpt-5-nano"): its model page answers for every model.
+     if(/^[a-z0-9][a-z0-9._-]*[/:][a-z0-9._:/-]+$/i.test(req.params.id))return res.redirect(301,`/ai/models/${encodeURIComponent(req.params.id)}`);
+     return notHere(res,'This comparison');
+   }
    const t=cs[0].things.find(t=>t.id===req.params.id);res.vary('Accept');
    if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(cs.map(c=>v.markdown({...c,things:[t]})).join('\n'));
    res.send(v.page(t.name,`<h1>${v.esc(t.name)}</h1><p>${v.esc(t.maker)}</p><a href="${v.esc(t.url)}">Original listing</a>${cs.map(c=>`<h2><a href="/comparisons/${c.slug}">${v.esc(c.title)}</a></h2><dl>${c.criteria.map(k=>`<dt>${v.esc(k.label)} (${v.esc(k.unit)})</dt><dd>${v.number(c.results.find(r=>r.thing===t.id && r.criterion===k.id),k)}</dd>`).join('')}</dl><p>${v.esc(c.method)}</p>`).join('')}`,req.path));
  }));
  if(bench) app.use(bench);
- app.use((_q,r)=>r.status(404).send('Not found'));
+ app.use((req,r)=>(req.accepts(['html','json'])==='json'?r.status(404).json({error:'not_found'}):notHere(r)));
  app.use((_e,_q,r,_n)=>r.status(503).json({error:'compare.unavailable'}));
  return app;
 }
