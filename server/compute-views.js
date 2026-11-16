@@ -1,6 +1,9 @@
 'use strict';
 /** The /compute page: filters, sorts and a side-by-side over Exchange's reviewed compute prices. */
 const kit = require('openvibe-shared/kit');
+const glyphs = require('openvibe-shared/glyphs');
+const { siteLink } = require('./site-link');
+const g = (name) => glyphs.svg(name, { size: 20 });
 const { PAGE, MONTH_HOURS, select, href, label } = require('./compute');
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,19 +22,20 @@ const checkedLabel = (c) => (c.checked_days_ago == null ? 'at an unknown date' :
 const offerName = (o) => `${o.provider} ${memory(o) || label(o.kind)}${o.kind === 'gpu' ? ` (${o.interruptible ? 'interruptible' : 'on demand'})` : ''}`;
 const badge = (text, tone = '') => kit.badge(text, tone);
 
-function cheapestLine(compute) {
+function cheapestLine() { return ''; }
+/** The cheapest GPU and computer as two cards, each with its mark (the owner, 11-16, /ov-gui-polish on /compute). */
+function cheapestCards(compute) {
     const pick = (kind) => compute.offers.find((o) => o.id === compute.cheapest[kind]);
-    const parts = [];
-    for (const kind of ['gpu', 'cpu']) {
+    const cards = [['gpu', 'Cheapest GPU', 'chip'], ['cpu', 'Cheapest computer', 'server']].map(([kind, title, icon]) => {
         const o = pick(kind);
-        if (o) parts.push(`cheapest ${kind === 'gpu' ? 'GPU' : 'computer'}: <strong>${esc(o.provider)} ${esc(memory(o) || '')}</strong> at ${money(o.hourly)}/hour`);
-    }
-    return parts.length ? ` · ${parts.join(' · ')}` : '';
+        return o ? `<a class="compute-best" href="#offer-${esc(o.id)}"><span class="compute-best-ic" aria-hidden="true">${g(icon)}</span><span class="compute-best-t"><small>${esc(title)}</small><b>${money(o.hourly)}<i>/hour</i></b><span>${esc(o.provider)} · ${esc(memory(o) || label(o.kind))}</span></span></a>` : '';
+    }).join('');
+    return cards ? `<div class="compute-bests">${cards}</div>` : '';
 }
 
 function sortNav(q) {
-    const sorts = [['hourly', 'price per hour'], ['gpu-hour', 'price per GPU GB-hour'], ['month', 'price per month (24/7)']];
-    return `<nav class="compute-sort" aria-label="Sort prices"><span>Sort by</span>${sorts.map(([v, l]) => `<a href="${esc(href(q, { sort: v }))}"${q.sort === v ? ' aria-current="true"' : ''}>${esc(l)}</a>`).join('')}</nav>`;
+    const sorts = [['hourly', 'Per hour', 'clock', 'price per hour'], ['gpu-hour', 'Per GPU GB', 'chip', 'price per GPU GB-hour'], ['month', 'Per month', 'calendar', 'price per month (24/7)']];
+    return `<nav class="compute-sort" aria-label="Sort prices"><span class="compute-sort-l">Sort</span>${sorts.map(([v, l, icon, full]) => `<a href="${esc(href(q, { sort: v }))}" title="Sort by ${esc(full)}"${q.sort === v ? ' aria-current="true"' : ''}>${g(icon)}<span>${esc(l)}</span></a>`).join('')}</nav>`;
 }
 
 function pickLink(o, q) {
@@ -55,8 +59,8 @@ function useLinks() {
 
 function card(o, q) {
     const p = pickLink(o, q);
-    return `<article class="ovk-card compute-card" data-offer="${esc(o.id)}">
-<h2><span>${esc(o.provider)}</span> <small class="compute-kind">${label(o.kind)}</small>${flags(o)}</h2>
+    return `<article class="ovk-card compute-card" data-offer="${esc(o.id)}" id="offer-${esc(o.id)}">
+<h2><span class="compute-prov" aria-hidden="true">${esc(String(o.provider || '?').charAt(0).toUpperCase())}</span><span>${esc(o.provider)}</span> <small class="compute-kind">${label(o.kind)}</small>${flags(o)}</h2>
 <p class="compute-price"><b>${money(o.hourly)}</b> per hour</p>
 <dl class="compute-facts">
 <div><dt>${o.kind === 'gpu' ? 'GPU' : 'Computer'}</dt><dd>${esc(memory(o) || 'Not stated')}</dd></div>
@@ -68,8 +72,7 @@ function card(o, q) {
 </dl>
 ${o.promotion ? `<p class="compute-promo">${esc(o.promotion)}${o.promotion_expires ? ` (ends ${esc(day(o.promotion_expires))})` : ''}</p>` : ''}
 ${o.expired ? `<p class="compute-overdue">Review date passed <time datetime="${esc(o.expires_at)}">${esc(month(o.expires_at))}</time>: this is the last reviewed price, not a re-checked one.</p>` : ''}
-<p class="compute-links"><a href="${esc(o.source)}">Provider price</a>${p.href ? ` · <a href="${esc(p.href)}" rel="nofollow">${esc(p.label)}</a>` : ` · <span>${esc(p.label)}</span>`}</p>
-<p class="compute-use">${useLinks()}</p>
+<p class="compute-links"><a class="compute-act" href="${esc(o.source)}" rel="noopener nofollow">${g('open')}<span>Provider price</span></a>${p.href ? `<a class="compute-act" href="${esc(p.href)}" rel="nofollow">${g(q.pick.includes(o.id) ? 'close' : 'plus')}<span>${esc(p.label)}</span></a>` : `<span class="compute-act is-off">${esc(p.label)}</span>`}</p>
 </article>`;
 }
 
@@ -105,30 +108,33 @@ function filters(compute, q) {
     const regions = [...new Set(compute.offers.map((o) => o.region).filter(Boolean))].sort();
     if (q.gpu && !gpus.includes(q.gpu)) gpus.push(q.gpu);
     if (q.region && !regions.includes(q.region)) regions.push(q.region);
-    return `<form class="compute-filters" method="get" action="/compute"><fieldset><legend>Filter prices</legend>
-${kit.selectRow({ name: 'kind', label: 'Kind', options: [['', 'GPUs and computers'], ['gpu', 'GPUs'], ['cpu', 'Computers']], value: q.kind })}
-${kit.selectRow({ name: 'gpu', label: 'GPU model', options: [['', 'Any GPU model'], ...gpus.map((g) => [g, g])], value: q.gpu })}
-${kit.selectRow({ name: 'region', label: 'Region', options: [['', 'Any region'], ...regions.map((r) => [r, r])], value: q.region })}
-${kit.selectRow({ name: 'interruptible', label: 'Pricing', options: [['', 'Any pricing'], ['no', 'On demand'], ['yes', 'Interruptible']], value: q.interruptible })}
+    const chips = (name, label, options, value) => `<div class="compute-chips" role="radiogroup" aria-label="${esc(label)}">${options.map(([v, l, icon]) => `<label class="compute-chip"><input type="radio" name="${esc(name)}" value="${esc(v)}"${String(value || '') === v ? ' checked' : ''}>${icon ? g(icon) : ''}<span>${esc(l)}</span></label>`).join('')}</div>`;
+    const picker = (name, label, options, value) => `<label class="compute-pick"><span>${esc(label)}</span><select name="${esc(name)}">${options.map(([v, l]) => `<option value="${esc(v)}"${String(value || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+    return `<form class="compute-filters" method="get" action="/compute" aria-label="Filter prices">
+${chips('kind', 'Kind', [['', 'All', 'grid'], ['gpu', 'GPUs', 'chip'], ['cpu', 'Computers', 'server']], q.kind)}
+${chips('interruptible', 'Pricing', [['', 'Any pricing'], ['no', 'On demand'], ['yes', 'Interruptible']], q.interruptible)}
+<div class="compute-picks">${picker('gpu', 'GPU model', [['', 'Any GPU'], ...gpus.map((x) => [x, x])], q.gpu)}${picker('region', 'Region', [['', 'Any region'], ...regions.map((r) => [r, r])], q.region)}</div>
 ${q.sort !== 'hourly' ? `<input type="hidden" name="sort" value="${esc(q.sort)}">` : ''}${q.pick.length ? `<input type="hidden" name="pick" value="${esc(q.pick.join(','))}">` : ''}
-<p class="compute-submit"><button class="ovk-btn ovk-btn--primary" type="submit">Show prices</button> <a href="/compute">Reset</a></p>
-</fieldset></form>`;
+<p class="compute-submit"><button class="ovk-btn ovk-btn--primary" type="submit">Show prices</button><a class="compute-reset" href="/compute">${g('close')}<span>Reset</span></a></p>
+</form>`;
 }
 
 function body(compute, query) {
     const { q, offers, picks } = select(compute, query);
     const when = checkedLabel(compute);
     return `${kit.head({ title: 'Compute prices', icon: 'server', sub: `What an hour of a GPU or a computer costs at each provider, checked ${when}.`, sticky: false })}
-<p class="compute-source">Data from <a href="${esc(PAGE)}">OpenVibe.Exchange</a> · <a href="/api/v1/compute">JSON</a> · USD${compute.checked_at ? ` · checked <time datetime="${esc(compute.checked_at)}">${esc(day(compute.checked_at))}</time>` : ''}</p>
+<p class="compute-source"><span class="compute-from">Data from</span> ${siteLink(PAGE, 'exchange', 'OpenVibe.Exchange')} <a class="compute-json" href="/api/v1/compute">${g('code')}<span>JSON</span></a> <span class="compute-meta">USD${compute.checked_at ? ` · checked <time datetime="${esc(compute.checked_at)}">${esc(day(compute.checked_at))}</time>` : ''}</span></p>
 ${compute.unavailable ? kit.notice({ kind: 'warn', text: compute.unavailable }) : ''}
 ${compute.expired_count ? kit.notice({ kind: 'warn', text: `${compute.expired_count} offer${compute.expired_count === 1 ? '' : 's'} passed the review date${compute.expired_at ? ` on ${month(compute.expired_at)}` : ''}; shown as the last reviewed price, not as current.` }) : ''}
 ${filters(compute, q)}
+${cheapestCards(compute)}
 ${sortNav(q)}
 <p role="status" class="compute-count">${offers.length === compute.offers.length ? `${offers.length} offer${offers.length === 1 ? '' : 's'}` : `${offers.length} of ${compute.offers.length} offers`}${cheapestLine(compute)}</p>
 ${picks.length ? `<p class="compute-picked">Side-by-side: ${picks.map((o) => esc(offerName(o))).join(' vs ')}${picks.length < 2 ? ' (pick one more)' : ` · <a href="${esc(href(q, { pick: [] }))}">Clear</a>`}</p>` : ''}
 ${offers.length ? `<div class="compute-cards">${offers.map((o) => card(o, q)).join('')}</div>${table(offers, q)}` : `<p class="compute-empty">No offers match these filters. <a href="/compute">Clear them</a>.</p>`}
 ${picks.length >= 2 ? sideBySide(picks, q) : ''}
-<section class="compute-use"><h2>Use it on OpenVibe</h2><p>${useLinks()}. The provider sets the price above; OpenVibe's own rate for a model run is on <a href="https://openvibe.exchange/models">Exchange</a>.</p></section>
+<section class="compute-use"><h2>Use it on OpenVibe</h2><p class="compute-sites">${siteLink('https://openvibe.exchange/models', 'exchange', 'OpenVibe.Exchange', 'models on Exchange')} ${siteLink('https://openvibe.run/', 'run', 'OpenVibe.Run', 'computers on Run')}</p><p>The provider sets the price above; OpenVibe's own rate for a model run is on Exchange.</p></section>
+<script src="/compute.js" defer></script>
 `;
 }
 
