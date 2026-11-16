@@ -227,6 +227,26 @@ function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new
         return { runs, overview };
     }
 
+    /**
+     * An offer's figures over a window (24h, 30d, all): `${model}|${provider}` → { uptime, error_rate, requests, speed },
+     * keyed by both the model's slug and its registry name, as the two offer lists name it. null for the week (the
+     * comparison's own figures) or when the window could not be read (the page then says the week).
+     */
+    async function windowFigures(window) {
+        if (!window || window === '7d' || !catClient.catalog) return null;
+        const cat = await catClient.catalog(window).catch(() => null);
+        if (!cat || !Array.isArray(cat.models)) return null;
+        const out = new Map();
+        for (const m of cat.models) {
+            for (const o of m.offers || []) {
+                const f = { uptime: o.uptime, error_rate: o.error_rate, requests: o.requests, speed: o.speed };
+                out.set(`${m.slug}|${o.provider}`, f);
+                if (o.model) out.set(`${o.model}|${o.provider}`, f);
+            }
+        }
+        return out;
+    }
+
     async function modelPage(id) {
         if (!benchClient.isModelName(id)) return null;
         const [data, detail] = await Promise.all([comparison(), benchClient.modelDetail(id)]);
@@ -296,7 +316,7 @@ function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new
     }
 
     return {
-        comparison, kindBoard, benchmarkPage, method, feed, modelPage, compare, leaderboard, factorBoard, agentSplit,
+        comparison, kindBoard, benchmarkPage, method, feed, modelPage, windowFigures, compare, leaderboard, factorBoard, agentSplit,
         bench: benchClient, catalogue: catClient, readRows, ttlMs: ttl,
         isKindId: benchClient.isKindId, isBenchmarkId: benchClient.isBenchmarkId, isModelName: benchClient.isModelName, normaliseTab: benchClient.normaliseTab,
     };

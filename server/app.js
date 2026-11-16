@@ -66,7 +66,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
  app.get('/compute',wrap(async(req,res)=>{const compute=await getCompute();res.vary('Accept');if(req.accepts(['html','text/markdown'])==='text/markdown')return res.type('text/markdown').send(computeViews.markdown(compute,req.query));res.send(v.page('Compute prices',computeViews.body(compute,req.query),'/compute',[computeViews.jsonLd(compute)]));}));
  app.get('/ai',wrap(async(_q,r)=>r.send(aiViews.hub(await ai.comparison()))));
  app.get('/ai/leaderboard',wrap(async(req,res)=>res.send(aiViews.leaderboard(await ai.leaderboard(req.query)))));
- app.get('/ai/providers',wrap(async(_q,r)=>{const data=await ai.comparison();return r.send(aiViews.providers(data));}));
+ app.get('/ai/providers',wrap(async(q,r)=>{const window=aiViews.windowOf(q.query);const [data,figures]=await Promise.all([ai.comparison(),ai.windowFigures(window)]);return r.send(aiViews.providers(data,{window,figures}));}));
  app.get('/ai/harnesses',wrap(async(req,res)=>res.send(aiViews.harnesses(await ai.factorBoard(req.query)))));
  // The ways to work a task (Actor's engines, compared on its /compare; 11-16).
  app.get('/ai/ways',wrap(async(_q,r)=>r.send(aiViews.ways(await ways.board()))));
@@ -88,7 +88,7 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
    if(req.path!==canonical)return res.redirect(301,canonical);
    return res.send(aiViews.compare(await ai.compare(ordered)));
  }));
- app.get('/ai/models/:model',wrap(async(req,res)=>{const data=await ai.modelPage(req.params.model);if(!data)return res.sendStatus(404);return res.send(aiViews.model(data));}));
+ app.get('/ai/models/:model',wrap(async(req,res)=>{const window=aiViews.windowOf(req.query);const [data,figures]=await Promise.all([ai.modelPage(req.params.model),ai.windowFigures(window)]);if(!data)return res.sendStatus(404);return res.send(aiViews.model(data,{window,figures}));}));
  app.get('/ai/method',wrap(async(req,res)=>res.send(aiViews.methodPage(await ai.method()))));
  app.get('/ai/feed.xml',wrap(async(req,res)=>{const feed=await ai.feed();res.status(200).set('Cache-Control','public, max-age=120').type('application/rss+xml; charset=utf-8').send(aiViews.rss(feed));}));
  app.get('/ai/:ref',wrap(async(req,res)=>{const ref=String(req.params.ref||'');const bench=ai.isBenchmarkId(ref);const data=bench?await ai.benchmarkPage(ref):await ai.kindBoard(ref,ai.normaliseTab(req.query.tab));if(!data)return res.sendStatus(404);return res.send(bench?aiViews.benchmarkPage(data):aiViews.boardPage(data));}));
