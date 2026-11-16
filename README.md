@@ -23,7 +23,3 @@ upstream (`127.0.0.1:5230`) at Compare's `127.0.0.1:5280`, then stop and disable
 into Compare's own database or schema: expand, copy, verify, contract after the 7-day window).
 
 Launch: Host register-compare.py registers port 5280 with a lifecycle override until the separate Contracts manifest is released. Use merge-deploy.sh, then ov-vhost-install for deploy/nginx/openvibe.compare.conf. No database or service credentials are required.
-
-<!-- versions:start -->
-- openvibe-contracts: v0.422.0
-<!-- versions:end -->
