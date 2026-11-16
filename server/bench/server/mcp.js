@@ -17,7 +17,9 @@ const pkg = require('../package.json');
 const protectedResource = require('./http/protected-resource');
 
 const PROTOCOL_VERSION = '2025-06-18';
-const SUPPORTED_VERSIONS = Object.freeze(new Set(['2025-06-18', '2025-03-26']));
+const SUPPORTED_VERSIONS = Object.freeze(new Set(['2025-11-25', '2025-06-18', '2025-03-26']));
+// MCP 2026-07-28 (stateless: the version and the method on every request, server/discover) beside the handshake era.
+const mcp = require('openvibe-sdk/mcp');
 const BODY_LIMIT = '64kb';
 
 const INSTRUCTIONS = 'Bench runs one shared benchmark engine across every OpenVibe room. list_kinds shows every kind Bench runs; start_round queues a pinned round and returns its id; next_pair fetches a blind pair to judge; cast_judgement records a vote and reveals the two entries; get_board renders an elo, pareto or cost board; run_eval runs a private task suite.';
@@ -172,6 +174,7 @@ async function handleMessage(msg, req, ctx) {
     if (!hasId || msg.method.startsWith('notifications/')) return { notification: true };
     const id = msg.id;
     const params = msg.params && typeof msg.params === 'object' && !Array.isArray(msg.params) ? msg.params : {};
+    if (mcp.requestVersion(params)) return handleModern(id, msg.method, params, req, ctx);
     switch (msg.method) {
         case 'initialize': {
             const requested = params.protocolVersion;
@@ -187,6 +190,24 @@ async function handleMessage(msg, req, ctx) {
         default:
             return { response: error(id, -32601, 'Method not found') };
     }
+}
+
+/** A 2026-07-28 request: headers checked against the body, every result complete, the tool list cacheable. */
+async function handleModern(id, method, params, req, ctx) {
+    const bad = mcp.checkRequest({ header: (n) => req.get(n), method, params });
+    if (bad) return { response: { jsonrpc: '2.0', id, error: bad.error }, status: bad.status };
+    if (method === 'server/discover') {
+        return { response: result(id, mcp.discoverResult({ serverInfo: { name: 'openvibe-bench', title: 'OpenVibe Bench', version: pkg.version }, capabilities: { tools: {} }, instructions: INSTRUCTIONS, versions: [...mcp.MODERN_VERSIONS, ...SUPPORTED_VERSIONS] })) };
+    }
+    // The same tools for everyone: a public list, kept an hour.
+    if (method === 'tools/list') return { response: result(id, mcp.listResult('tools', TOOLS, { cacheScope: 'public', ttlMs: 3600000 })) };
+    if (method === 'tools/call') {
+        const out = await callTool(id, params, req, ctx);
+        if (out.response && out.response.result) out.response.result = mcp.complete(out.response.result);
+        return out;
+    }
+    const nf = mcp.methodNotFound(method);
+    return { response: { jsonrpc: '2.0', id, error: nf.error }, status: nf.status };
 }
 
 /**
@@ -231,14 +252,15 @@ function mcpRouter(ctx) {
     router.use('/mcp', (_req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); next(); });
     router.options('/mcp', (_req, res) => {
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Protocol-Version');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Mcp-Protocol-Version, Mcp-Method, Mcp-Name');
         res.setHeader('Access-Control-Max-Age', '600');
         res.status(204).end();
     });
 
     router.post('/mcp', json, mcpAuth(ctx), async (req, res) => {
         const version = req.get('mcp-protocol-version');
-        if (version && !SUPPORTED_VERSIONS.has(version)) {
+        // A 2026-07-28 version is checked against the body per request (handleModern); an unknown one is refused here.
+        if (version && !SUPPORTED_VERSIONS.has(version) && !mcp.MODERN_VERSIONS.includes(version)) {
             const body = req.body;
             const id = body && !Array.isArray(body) && validId(body.id) ? body.id : null;
             return res.status(400).json(error(id, -32600, 'Unsupported protocol version'));
@@ -249,13 +271,15 @@ function mcpRouter(ctx) {
         if (batch && offered.length === 0) return res.status(200).json(error(null, -32600, 'Invalid Request'));
         const messages = batch ? offered : [offered];
         const responses = [];
+        let status = 200;
         for (const message of messages) {
             const out = await handleMessage(message, req, ctx);
             if (out.unauthorized) return unauthorized(res, out.id, ctx);
             if (out.response) responses.push(out.response);
+            if (out.status && !batch) status = out.status;   // 2026-07-28: a refusal is a 400, an unknown method a 404
         }
         if (!responses.length) return res.status(202).end();
-        return res.status(200).json(batch ? responses : responses[0]);
+        return res.status(status).json(batch ? responses : responses[0]);
     });
 
     router.all('/mcp', (_req, res) => {
