@@ -3,7 +3,7 @@
 // The AI catalogue and Exchange market joined into the rows the AI pages show. The first offer supplies the
 // displayed prices: lowest known own-page output price, then input price. Unknown prices sort last; never turn
 // null into a free price.
-const { bare, findCatalogModel } = require('./ai-join');
+const { bare, catalogIndex } = require('./ai-join');
 
 const sameEndpoint = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 const amount = (v) => v == null || !Number.isFinite(Number(v)) ? Infinity : Number(v);
@@ -11,9 +11,10 @@ const amount = (v) => v == null || !Number.isFinite(Number(v)) ? Infinity : Numb
 function mergeMarket(catalogue, market) {
     if (!market || !Array.isArray(market.offers)) return catalogue;
     const models = new Map();
+    const findCat = catalogIndex(catalogue && catalogue.models);
     for (const offer of market.offers) {
         const key = bare(offer.model);
-        const cat = findCatalogModel(catalogue && catalogue.models, offer.model);
+        const cat = findCat(offer.model);
         let model = models.get(key);
         if (!model) {
             model = { ...cat, slug: cat && cat.slug || offer.model, canonical: cat && cat.canonical || offer.model,

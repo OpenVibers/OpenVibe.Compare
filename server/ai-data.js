@@ -5,7 +5,7 @@
 // leaves its part with a worded status and a dash, never a made-up value.
 const { createAiCatalogue } = require('./ai-catalogue');
 const { comparisonCatalogue } = require('./ai-market');
-const { findCatalogModel, makerOf } = require('./ai-join');
+const { catalogIndex, makerOf } = require('./ai-join');
 const { createBenchClient, isKindId, isModelName, normaliseTab, normaliseFactorKind, normaliseFactorDays, FACTOR_KINDS } = require('./ai-bench');
 const { requestJson } = require('./ai-source');
 const { measuredRows, measuredOf } = require('./data');
@@ -31,7 +31,7 @@ function buildComparison({ kindsRead = null, boards = [], catalogue = null, perf
     const perfRows = measuredRows(perf);
     const perfAt = measuredAt(perf) || iso(now);
     const catModels = (catalogue && catalogue.models || []).map((model) => ({ ...model, offers: (model.offers || []).map((offer) => ({ ...offer, source: offer.source || { name: 'OpenVibe.AI', date: catalogue.generated_at || null, sample_size: offer.requests_7d != null ? offer.requests_7d : null } })) }));
-    const findCat = (id) => findCatalogModel(catModels, id);
+    const findCat = catalogIndex(catModels);   // one index per build, not a scan per row (11-18)
     const measuredFor = (id, offers = []) => {
         const row = measuredOf(perfRows, id, { provider_model: offers.map((o) => o.provider_model).find(Boolean) });
         if (row) return measuredRow(perf, row, perfAt);
