@@ -52,10 +52,21 @@ function mergeMarket(catalogue, market) {
     return { ...catalogue, generated_at: market.generated_at, metadata: market.metadata, stale: market.stale || false, models: [...models.values()] };
 }
 
+// The last merge, kept while the catalogue and the market are the ones it was made from (11-18 profile: mergeMarket was
+// 68 of a 581 ms stall's samples, redone every two minutes over unchanged data).
+let lastMerge = null;
+const mergeKey = (catalogue, market) => [catalogue && catalogue.generated_at, catalogue && Array.isArray(catalogue.models) ? catalogue.models.length : -1,
+    market && market.generated_at, market && Array.isArray(market.offers) ? market.offers.length : -1, market && market.stale ? 1 : 0].join('|');
+
 async function comparisonCatalogue(client) {
     if (!client) return null;
     const [catalogue, market] = await Promise.all([client.catalog(), client.market && client.market()]);
-    return mergeMarket(catalogue, market);
+    // Only a market that says when it was made can be matched; without generated_at every read is merged afresh.
+    const key = market && market.generated_at && catalogue && catalogue.generated_at ? mergeKey(catalogue, market) : null;
+    if (key && lastMerge && lastMerge.key === key) return lastMerge.value;
+    const value = mergeMarket(catalogue, market);
+    lastMerge = key ? { key, value } : null;
+    return value;
 }
 
 module.exports = { mergeMarket, comparisonCatalogue };

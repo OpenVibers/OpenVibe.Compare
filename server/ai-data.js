@@ -26,6 +26,21 @@ function measuredRow(feed, row, at) {
     return { ttft, tps, success, calls: number(row.calls), as_of: at, source_url: PERF_URL };
 }
 
+/**
+ * The ranks a rated row could hold: from the best to the worst position of every row whose interval overlaps its own
+ * (itself included). One pass over the rated rows, nothing allocated (11-18: a map of every row for every row made
+ * millions of objects each refresh and Compare's event loop stalled about 1 s every two minutes).
+ */
+function overlapRanks(list, intervalOf) {
+    const iv = [];
+    list.forEach((x, j) => { const r = intervalOf(x); if (r && r[0] != null && r[1] != null) iv.push([r[0], r[1], j + 1]); });
+    return (lo, hi) => {
+        let min = Infinity, max = -Infinity;
+        for (const [a, b, rank] of iv) if (a <= hi && b >= lo) { if (rank < min) min = rank; if (rank > max) max = rank; }
+        return min === Infinity ? null : { min, max };
+    };
+}
+
 function buildComparison({ kindsRead = null, boards = [], catalogue = null, perf = null, now = new Date().toISOString() } = {}) {
     const kinds = kindsRead && kindsRead.data && Array.isArray(kindsRead.data.kinds) ? kindsRead.data.kinds : [];
     const perfRows = measuredRows(perf);
@@ -74,24 +89,28 @@ function buildComparison({ kindsRead = null, boards = [], catalogue = null, perf
     }
     for (const kind of kinds) {
         const ranked = rows.map((row) => ({ row, task: row.task_ratings.find((rating) => rating.kind === kind.id) })).filter((x) => x.task).sort((a, b) => (b.task.rating.value == null ? -Infinity : b.task.rating.value) - (a.task.rating.value == null ? -Infinity : a.task.rating.value));
+        const kindRanks = overlapRanks(ranked, (x) => x.task.rating.interval);
         ranked.forEach(({ task }, i) => {
             const [lo, hi] = task.rating.interval || [];
             if (lo == null || hi == null) return;
-            const overlap = ranked.map((other, j) => ({ other, rank: j + 1 })).filter(({ other }) => other.task.rating.interval && other.task.rating.interval[0] != null && other.task.rating.interval[1] != null && other.task.rating.interval[0] <= hi && other.task.rating.interval[1] >= lo).map(({ rank }) => rank);
-            task.rank = overlap.length ? { min: Math.min(...overlap), max: Math.max(...overlap), position: i + 1 } : null;
+            const span = kindRanks(lo, hi);
+            task.rank = span ? { min: span.min, max: span.max, position: i + 1 } : null;
         });
     }
-    const outPrice = (r) => Math.min(...(r.provider_offers || []).map((o) => o.price && o.price.out != null ? Number(o.price.out) : NaN).filter(Number.isFinite), Infinity);
+    const priceOf = (r) => Math.min(...(r.provider_offers || []).map((o) => o.price && o.price.out != null ? Number(o.price.out) : NaN).filter(Number.isFinite), Infinity);
+    const prices = new Map(rows.map((r) => [r, priceOf(r)]));
+    const outPrice = (r) => prices.get(r);
     rows.sort((a, b) => (b.rating.value == null ? -Infinity : b.rating.value) - (a.rating.value == null ? -Infinity : a.rating.value)
         || (b.routed === true) - (a.routed === true)
         || outPrice(a) - outPrice(b)
         || String(a.id).localeCompare(String(b.id)));
+    const rowRanks = overlapRanks(rows, (r) => r.rating.interval);
     rows.forEach((row, i) => {
         const [lo, hi] = row.rating.interval || [];
         if (lo == null || hi == null) row.rank = null;
         else {
-            const overlap = rows.map((other, j) => ({ other, rank: j + 1 })).filter(({ other }) => other.rating.interval && other.rating.interval[0] != null && other.rating.interval[1] != null && other.rating.interval[0] <= hi && other.rating.interval[1] >= lo).map(({ rank }) => rank);
-            row.rank = overlap.length ? { min: Math.min(...overlap), max: Math.max(...overlap), position: i + 1 } : null;
+            const span = rowRanks(lo, hi);
+            row.rank = span ? { min: span.min, max: span.max, position: i + 1 } : null;
         }
     });
     const tasks = kinds.map((kind) => ({ id: kind.id, name: kind.name }));
@@ -322,4 +341,4 @@ function createAi({ fetchImpl = globalThis.fetch, log = console, now = () => new
     };
 }
 
-module.exports = { createAi, buildComparison, measuredRow, normaliseFactors, splitOf, agentLabel, TTL_MS, PERF_URL };
+module.exports = { createAi, buildComparison, overlapRanks, measuredRow, normaliseFactors, splitOf, agentLabel, TTL_MS, PERF_URL };
