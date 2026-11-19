@@ -26,6 +26,6 @@ Launch: Host register-compare.py registers port 5280 with a lifecycle override u
 
 <!-- versions:start -->
 - openvibe-contracts: v0.443.0
-- openvibe-sdk: v0.177.0
+- openvibe-sdk: v0.188.0
 - openvibe-shared: v4.320.0
 <!-- versions:end -->
