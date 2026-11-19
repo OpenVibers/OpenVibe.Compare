@@ -1,0 +1,96 @@
+/* "Was this written by an AI?" (/ai/detect, server/detect.js): one column on a phone, the reading and the judges
+   beside each other from 1000 px. Theme tokens only; a sentence mark is a tint, never an alarm. */
+.dt-page { width: min(1100px, calc(100% - 32px)); margin: 20px auto 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.dt-page > * { min-width: 0; }
+.dt-head h1 { margin: 2px 0 8px; font-size: clamp(1.6rem, 4.6vw, 2.4rem); line-height: 1.15; text-wrap: balance; }
+.dt-kicker { margin: 0; font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted, #93a0b4); }
+.dt-kicker a { color: inherit; }
+.dt-lede { margin: 0; max-width: 68ch; font-size: 1.02rem; line-height: 1.55; color: var(--text-secondary, #c3cad6); }
+.dt-card { padding: 18px; border: 1px solid var(--border, rgba(148, 163, 184, .22)); border-radius: 16px; background: var(--bg-card, rgba(15, 23, 42, .6)); }
+.dt-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 1.08rem; }
+.dt-card h2 i[data-ov-icon] { width: 20px; height: 20px; color: var(--accent, #60a5fa); }
+.dt-muted { margin: 10px 0 0; font-size: .86rem; line-height: 1.5; color: var(--text-muted, #93a0b4); }
+
+/* The form */
+.dt-form { display: grid; gap: 10px; }
+.dt-label { font-weight: 700; }
+.dt-form textarea { width: 100%; box-sizing: border-box; min-height: 180px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border, rgba(148, 163, 184, .3)); background: var(--bg-secondary, rgba(2, 6, 23, .5)); color: var(--text-primary, inherit); font: inherit; line-height: 1.5; resize: vertical; }
+.dt-form textarea:focus-visible { outline: 2px solid var(--accent, #60a5fa); outline-offset: 1px; }
+.dt-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.dt-count { font-size: .84rem; color: var(--text-muted, #93a0b4); }
+.dt-go { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: var(--accent, #3b82f6); color: var(--on-accent, #fff); font: inherit; font-weight: 700; cursor: pointer; transition: transform .12s ease, filter .12s ease; }
+.dt-go i[data-ov-icon] { width: 18px; height: 18px; }
+.dt-go:hover { filter: brightness(1.08); }
+.dt-go:active { transform: scale(.97); }
+.dt-go[disabled] { opacity: .65; cursor: progress; }
+.dt-busy { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--text-secondary, #c3cad6); }
+.dt-busy[hidden] { display: none; }
+.dt-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--accent, #60a5fa) 30%, transparent); border-top-color: var(--accent, #60a5fa); animation: dt-spin .8s linear infinite; }
+@keyframes dt-spin { to { transform: rotate(360deg); } }
+.dt-hint { margin: 0; font-size: .9rem; line-height: 1.5; color: var(--text-secondary, #c3cad6); }
+.dt-problem { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--warning, #f59e0b) 14%, transparent); }
+
+/* The reading */
+.dt-verdict { border-width: 1px; border-left-width: 4px; }
+.dt-verdict h2 { margin: 2px 0 6px; font-size: clamp(1.35rem, 3.6vw, 1.75rem); }
+.dt-verdict.dt-ai { border-left-color: var(--warning, #f59e0b); }
+.dt-verdict.dt-ai-lean { border-left-color: color-mix(in srgb, var(--warning, #f59e0b) 60%, var(--border, #475569)); }
+.dt-verdict.dt-human { border-left-color: var(--success, #22c55e); }
+.dt-verdict.dt-human-lean { border-left-color: color-mix(in srgb, var(--success, #22c55e) 60%, var(--border, #475569)); }
+.dt-verdict.dt-unsure { border-left-color: var(--text-muted, #93a0b4); }
+.dt-line { margin: 0; line-height: 1.5; color: var(--text-secondary, #c3cad6); }
+.dt-notes { margin: 12px 0 0; padding-left: 18px; line-height: 1.5; color: var(--text-secondary, #c3cad6); }
+
+.dt-scale { margin: 18px 0 4px; }
+.dt-track { position: relative; height: 12px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--success, #22c55e) 45%, transparent), color-mix(in srgb, var(--text-muted, #93a0b4) 25%, transparent) 50%, color-mix(in srgb, var(--warning, #f59e0b) 45%, transparent)); }
+.dt-band { position: absolute; top: -4px; bottom: -4px; border-radius: 999px; background: color-mix(in srgb, var(--accent, #60a5fa) 28%, transparent); border: 1px solid var(--accent, #60a5fa); transform-origin: left; animation: dt-grow .5s cubic-bezier(.2, .8, .2, 1) both; }
+.dt-dot, .dt-ring { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; animation: dt-pop .4s cubic-bezier(.2, 1.4, .3, 1) both; }
+.dt-dot { background: var(--text-primary, #e6edf7); box-shadow: 0 0 0 2px var(--bg-card, #0f172a); }
+.dt-ring { background: transparent; border: 2px dashed var(--text-secondary, #c3cad6); }
+.dt-ends { display: flex; justify-content: space-between; margin-top: 8px; font-size: .8rem; color: var(--text-muted, #93a0b4); }
+@keyframes dt-grow { from { transform: scaleX(0); } }
+@keyframes dt-pop { from { transform: scale(0); } }
+
+/* The judges */
+.dt-judges { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.dt-judge { padding: 14px; border-radius: 12px; border: 1px solid var(--border, rgba(148, 163, 184, .2)); background: var(--bg-secondary, rgba(2, 6, 23, .35)); min-width: 0; }
+.dt-judge.is-off { opacity: .7; }
+.dt-judge p { margin: 8px 0 0; line-height: 1.5; color: var(--text-secondary, #c3cad6); }
+.dt-jhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.dt-model { font-size: .85rem; color: var(--text-muted, #93a0b4); min-width: 0; overflow-wrap: anywhere; }
+.dt-est { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+.dt-est small { font-weight: 500; color: var(--text-muted, #93a0b4); }
+.dt-meter { height: 6px; margin-top: 8px; border-radius: 999px; background: color-mix(in srgb, var(--text-muted, #93a0b4) 20%, transparent); overflow: hidden; }
+.dt-meter span { display: block; height: 100%; border-radius: inherit; background: var(--accent, #60a5fa); transform-origin: left; animation: dt-grow .5s cubic-bezier(.2, .8, .2, 1) both; }
+.dt-judge details { margin-top: 8px; }
+.dt-judge summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--accent, #60a5fa); font-weight: 600; }
+.dt-evs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dt-ev { display: grid; gap: 2px; padding-left: 10px; border-left: 3px solid var(--warning, #f59e0b); }
+.dt-ev-human { border-left-color: var(--success, #22c55e); }
+.dt-ev q { line-height: 1.45; }
+.dt-ev span { font-size: .82rem; color: var(--text-muted, #93a0b4); }
+
+/* The passage */
+.dt-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 1rem; }
+.dt-m { border-radius: 4px; padding: 0 1px; color: inherit; }
+.dt-m-ai { background: color-mix(in srgb, var(--warning, #f59e0b) 30%, transparent); box-shadow: inset 0 -2px 0 var(--warning, #f59e0b); }
+.dt-m-ai_weak { background: color-mix(in srgb, var(--warning, #f59e0b) 12%, transparent); }
+.dt-m-human { background: color-mix(in srgb, var(--success, #22c55e) 16%, transparent); }
+.dt-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 12px; font-size: .85rem; color: var(--text-muted, #93a0b4); }
+
+/* Style signals */
+.dt-table { overflow-x: auto; }
+.dt-table table { width: 100%; border-collapse: collapse; }
+.dt-table th, .dt-table td { padding: 10px 0; border-top: 1px solid var(--border, rgba(148, 163, 184, .18)); text-align: left; vertical-align: top; }
+.dt-table th { font-weight: 600; padding-right: 12px; }
+.dt-table th small { display: block; font-weight: 400; font-size: .8rem; color: var(--text-muted, #93a0b4); }
+.dt-table td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* How and limits */
+.dt-steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; line-height: 1.55; }
+.dt-limits ul { margin: 0; padding-left: 18px; display: grid; gap: 8px; line-height: 1.5; }
+
+@media (min-width: 760px) {
+    .dt-judges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+html[data-ov-motion="off"] .dt-band, html[data-ov-motion="off"] .dt-dot, html[data-ov-motion="off"] .dt-ring, html[data-ov-motion="off"] .dt-meter span, html[data-ov-motion="off"] .dt-spin { animation: none; }

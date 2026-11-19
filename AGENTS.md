@@ -27,6 +27,11 @@ API**. Server-rendered pages; `openvibe-shared` for the shell.
   against the neutral `ov-bare` with its interval; `/ai/matrix` crosses harness and model; an agent
   pair (`<harness>+<model>-vs-<harness>+<model>`) splits its gap into model, harness and interaction.
   `/comparisons/ai-models` and an AI model's `/things/:id` 301 to the AI pages.
+- `GET /ai/detect`, `POST /ai/detect` — "Was this written by an AI?" ([server/detect.js](server/detect.js)): the
+  passage goes to OpenVibe.Exchange's `POST /api/v1/detect` (`OV_EXCHANGE_INTERNAL_URL`, default `127.0.0.1:5150`)
+  with the signed-in person's own token, as the Arena does, so a panel of judge models from different makers reads it
+  on their AI allowance; signed out, the writing-style signals only. Compare draws the verdict in words with the
+  judges' range, every judge side by side with its quotes, the marked sentences and the limits. Nothing is stored.
 - `GET /api/v1/comparisons[/:slug]` and `GET /api/v1/compute` — the same data as JSON, CORS-allowed
   for the origins in [server/origins.json](server/origins.json).
 - `robots.txt`, `sitemap.xml`, `llms.txt`, Dataset JSON-LD, and `Accept: text/markdown` negotiation —
@@ -53,7 +58,7 @@ and the compute book in [server/compute.js](server/compute.js) `SOURCE`:
 | `openvibe.compare/api/v1/factors?task_kind=&days=` | model and harness apart: harness effects, agents and interactions, with intervals (OpenVibe.Bench) |
 | `api.openvibe.exchange/api/v1/exchange/{catalog,market}` | AI catalogue and dated provider prices (OpenVibe.AI / Exchange) |
 
-It does not call AI, Live, Network or any authenticated API. Nothing here writes anywhere.
+It does not call AI, Live, Network or any authenticated API itself: the Arena and /ai/detect pass a signed-in person's own request through to Exchange. Nothing here writes anywhere.
 
 ## Repository map
 

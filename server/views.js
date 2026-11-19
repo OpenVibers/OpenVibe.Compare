@@ -67,6 +67,7 @@ function home(all,compute,ai=null,q='') {
    const measured=c.results.length?plural(c.results.length,rOne,rMany):c.kind==='ai.coding-agents'?'no verified runs yet':'nothing measured yet';
    return {href:`/comparisons/${c.slug}`,icon,title:c.title,text:c.summary,fact:`${plural(c.things.length,one,many)} · ${measured}`};}),
   {href:'/arena',icon:'trophy',title:'Arena',text:'Two anonymous AI answers to one prompt: pick the better one, then see which models wrote them.',fact:'Your votes rate the models'},
+  {href:'/ai/detect',icon:'search',title:'Was this written by an AI?',text:'AI judges from different makers read a passage side by side, with the words they based it on, and say “can’t tell” when that is the honest answer.',fact:'A range, never a single score sold as proof'},
  ];
  const shown=cards.filter(c=>has(`${c.title} ${c.text}`));
  const models=query?chat.filter(r=>has(`${r.id} ${r.maker||''}`)):[];
