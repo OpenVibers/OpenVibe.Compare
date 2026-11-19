@@ -38,7 +38,7 @@ test('API, phone/table markup, URL weights, Markdown, Dataset, discovery and COR
   const home=await (await fetch(base+'/')).text();
   assert.match(home,/<a class="cmp-card" href="\/ai">/);assert.match(home,/<b>AI models<\/b>/);
   assert.match(home,/<small>\d+ models? from \d+ makers?/,'the AI card counts /ai\'s own models');
-  for(const href of ['/compute','/comparisons/coding-agents','/comparisons/openvibe-plans','/arena'])assert.ok(home.includes(`<a class="cmp-card" href="${href}">`),href);
+  for(const href of ['/compute','/comparisons/coding-agents','/comparisons/openvibe-plans','/arena','/ai/detect'])assert.ok(home.includes(`<a class="cmp-card" href="${href}">`),href);
   assert.match(home,/<form class="cmp-pick" method="get" action="\/ai\/leaderboard">/);for(const n of ['kind','price','sort'])assert.match(home,new RegExp(`name="${n}"`),n);
   assert.ok(!/No measured picks|For my use|How picks are ranked/.test(home),'the old picks block is gone');
   assert.ok(!/<span class="cmp-card-ic" aria-hidden="true"><\/span>/.test(home),'every card glyph draws');
@@ -158,7 +158,7 @@ test('a source down still answers 200 with words; the pair and old AI URLs 301',
 test('the sitemap, robots and llms.txt name the Compare AI pages',async()=>{
  const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
  try {
-  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/arena','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
+  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/ai/detect','/arena','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
   const robots=await (await fetch(base+'/robots.txt')).text();assert.match(robots,/Allow: \/ai/);assert.match(robots,/https:\/\/openvibe\.compare\/sitemap\.xml/);
   const llms=await (await fetch(base+'/llms.txt')).text();assert.match(llms,/https:\/\/openvibe\.compare\/ai/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/leaderboard/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/models\/maker%2Falpha/);
  }finally{await new Promise(r=>server.close(r));}
