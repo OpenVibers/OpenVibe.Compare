@@ -3,8 +3,6 @@
 /**
  * Crawl artifacts for bench.openvibe.services. Sign-in, the API and the internal route are not for crawlers.
  */
-const fs = require('fs');
-const path = require('path');
 const seo = require('openvibe-shared/seo');
 const cache = require('openvibe-shared/cache-policy');
 const { asyncRouter } = require('./router');
@@ -12,14 +10,6 @@ const { asyncRouter } = require('./router');
 const SITE_NAME = 'OpenVibe.Bench';
 const DESCRIPTION = 'OpenVibe.Bench is one AI benchmark and comparison engine for every room: blind votes, rubrics, graders, test suites and game outcomes, with reproducible pinned rounds and an open dataset per kind.';
 const DISALLOW = ['/auth/', '/api/', '/internal', '/metrics', '/mcp'];
-
-function dayOf(ts) {
-    const m = String(ts == null ? '' : ts).match(/^(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : null;
-}
-function siteUpdated() {
-    try { return dayOf(JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'STATUS.json'), 'utf8')).updated); } catch { return null; }
-}
 
 function homeJsonLd(config) {
     const site = String(config.baseUrl).replace(/\/+$/, '');
@@ -43,8 +33,8 @@ function createDiscoveryRoutes(ctx) {
 
     r.get('/robots.txt', (_req, res) => {
         res.type('text/plain').set('Cache-Control', TEXT).send(
-            '# bench.openvibe.services: boards and datasets are JSON; sign-in, the API and the internal route are not for crawlers.\n'
-            + seo.robotsTxt({ sitemaps: [abs('/sitemap.xml')], disallow: DISALLOW }));
+            '# bench.openvibe.services: its pages moved to OpenVibe.Compare (each one a 301 there); its sitemap is Compare\'s.\n'
+            + seo.robotsTxt({ sitemaps: ['https://openvibe.compare/sitemap.xml'], disallow: DISALLOW }));
     });
 
     r.get('/llms.txt', (_req, res) => {
@@ -74,20 +64,11 @@ function createDiscoveryRoutes(ctx) {
         }));
     });
 
-    r.get('/sitemap.xml', async (_req, res) => {
-        const lastmod = siteUpdated();
-        // Public pages only: a private or unlisted benchmark never enters the sitemap (the registry lists public
-        // ones only).
-        const pages = [...PAGES, { path: '/benchmarks', changefreq: 'daily', priority: 0.8, title: 'Benchmarks', text: 'Versioned AI benchmarks anyone can run again.' }];
-        const benchmarks = await ctx.registry.listBenchmarks({ limit: 200 });
-        for (const b of benchmarks) {
-            if (b.visibility !== 'public') continue;
-            pages.push({ path: `/benchmarks/${encodeURIComponent(b.id)}`, changefreq: 'weekly', priority: 0.7, title: b.title, text: b.description || b.title });
-        }
-        const urls = pages.map((p) => ({ loc: abs(p.path), ...(lastmod ? { lastmod } : {}), changefreq: p.changefreq, priority: p.priority }));
-        res.type('application/xml').set('Cache-Control', TEXT).send(seo.sitemapXml(urls));
+    // Bench's pages are 301s to their OpenVibe.Compare pages (app.js): a sitemap listing them listed nothing but redirects
+    // (the network SEO crawl of 2026-11-21, OpenSEO's rules). It is empty; Compare's sitemap lists the pages.
+    r.get('/sitemap.xml', (_req, res) => {
+        res.type('application/xml').set('Cache-Control', TEXT).send(seo.sitemapXml([]));
     });
-
     return r;
 }
 

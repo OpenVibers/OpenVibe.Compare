@@ -158,7 +158,7 @@ test('a source down still answers 200 with words; the pair and old AI URLs 301',
 test('the sitemap, robots and llms.txt name the Compare AI pages',async()=>{
  const {createApp}=require('../server/app');const ai=await makeAi();const server=createApp({getData:async()=>data,ai}).listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base=`http://127.0.0.1:${server.address().port}`;
  try {
-  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/ai/detect','/arena','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
+  const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/ai/detect','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/openvibe\.compare\/arena</,'the arena is noindex: never in the sitemap');assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
   const robots=await (await fetch(base+'/robots.txt')).text();assert.match(robots,/Allow: \/ai/);assert.match(robots,/https:\/\/openvibe\.compare\/sitemap\.xml/);
   const llms=await (await fetch(base+'/llms.txt')).text();assert.match(llms,/https:\/\/openvibe\.compare\/ai/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/leaderboard/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/models\/maker%2Falpha/);
  }finally{await new Promise(r=>server.close(r));}
