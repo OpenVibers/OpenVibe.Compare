@@ -29,7 +29,7 @@ main:has(>.ai-page){margin-top:0}
 .ai-model-text b{font-weight:650;overflow-wrap:anywhere}
 .ai-model:hover b{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
 .ai-model-text small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--text-muted);font-size:.8rem}
-.ai-model-text .ovk-badge{font-size:.7rem}
+.ai-model-text .ovk-badge{font-size:.75rem}
 
 /* Numbers in cells: the value, then what it rests on */
 .ai-board td b,.ai-board td .ai-rating b,.ai-price b{font-variant-numeric:tabular-nums;font-weight:650}
@@ -52,7 +52,7 @@ main:has(>.ai-page){margin-top:0}
 .ai-pick{height:100%;box-sizing:border-box;display:grid;align-content:start;gap:8px;padding:16px;border:1px solid var(--border);border-radius:16px;background:var(--bg-card);color:inherit;text-decoration:none;
   transition:border-color .15s,transform .15s}
 .ai-pick:hover{border-color:color-mix(in srgb,var(--room-accent,var(--accent)) 60%,var(--border));transform:translateY(-1px)}
-.ai-pick-k{font-size:.74rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--room-accent,var(--accent))}
+.ai-pick-k{font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--room-accent,var(--accent))}
 .ai-pick-m{display:flex;align-items:center;gap:10px;min-width:0}
 .ai-pick-m b{font-size:1.08rem;overflow-wrap:anywhere}
 .ai-pick-n{font-size:1.25rem;font-weight:700;font-variant-numeric:tabular-nums}
@@ -157,7 +157,7 @@ main:has(>.ai-page){margin-top:0}
 /* The matrix: a cell is an agent's score, its interval in words and the tooltip; the best pair per model is marked. */
 .ai-interactions{margin:12px 0 0;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--bg-card);font-size:.88rem;line-height:1.5;min-width:0;overflow-wrap:anywhere}
 .ai-interactions b{font-variant-numeric:tabular-nums}
-.ai-page .ovk-table td .ovk-badge{margin-left:4px;font-size:.7rem;white-space:nowrap}
+.ai-page .ovk-table td .ovk-badge{margin-left:4px;font-size:.75rem;white-space:nowrap}
 @media (max-width:600px){
   .ai-page .ovk-table--stack td .ovk-badge{margin-left:0;display:inline-block;margin-top:4px}
   .ai-harness{padding:12px}
