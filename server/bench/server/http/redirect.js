@@ -68,6 +68,9 @@ function createCompareRedirects({ compareUrl = DEFAULT_COMPARE } = {}) {
         if (KEEP.some((re) => re.test(req.path))) return next();
         const target = targetFor(req.path, compareUrl);
         if (!target) return next();
+        // Inside Compare (Bench's app is mounted there since 11-13) a target on this same host and path is this very
+        // request: redirecting would loop (11-28: /llms-full.txt answered a 301 to itself).
+        try { const to = new URL(target); if (to.host === String(req.get('host') || '') && to.pathname === req.path) return next(); } catch { /* a relative target: follow it */ }
         // ?tab= is the one query Compare's AI board reads from the old links; everything else is dropped.
         const tab = req.query && typeof req.query.tab === 'string' && /^(elo|pareto|cost)$/.test(req.query.tab) ? `?tab=${req.query.tab}` : '';
         res.set('Cache-Control', 'public, max-age=3600');

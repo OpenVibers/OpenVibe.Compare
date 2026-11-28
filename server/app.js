@@ -59,6 +59,20 @@ function createApp({getData=createData(),getCompute=createCompute(),ai=createAi(
    for(const task of aiData.tasks)paths.set(`/ai/${encodeURIComponent(task.id)}`,aiData.updated_at);
    r.type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+[...paths].map(([p,d])=>`<url><loc>https://openvibe.compare${v.esc(p)}</loc><lastmod>${v.esc(d)}</lastmod></url>`).join('')+'</urlset>');
  }));
+ // The full text for language models (SEO-33): the pages llms.txt lists, as Markdown from their own renders. Until 11-28
+ // /llms-full.txt fell through to Bench's old redirect, which sent it to itself (a 301 loop to every agent).
+ app.get('/llms-full.txt',wrap(async(_q,r)=>{
+  const seo=require('openvibe-shared/seo'),twin=(html,url)=>require('openvibe-shared/agent-layer').markdownTwin({html,canonical:`https://openvibe.compare${url}`}).replace(/^---[\s\S]*?\n---\n/,'').trim();
+  const [compute,aiData,board]=await Promise.all([getCompute(),ai.comparison(),ai.leaderboard({})]);
+  const window=aiViews.windowOf({});const figures=await ai.windowFigures(window).catch(()=>null);
+  const sections=[
+   {title:'Compute prices',url:'/compute',body:computeViews.markdown(compute,{})},
+   {title:'AI model leaderboard',url:'/ai',body:twin(aiViews.hub(aiData),'/ai')},
+   {title:'AI leaderboard',url:'/ai/leaderboard',body:twin(aiViews.leaderboard(board),'/ai/leaderboard')},
+   {title:'AI providers',url:'/ai/providers',body:twin(aiViews.providers(aiData,{window,figures}),'/ai/providers')},
+  ];
+  return r.type('text').set('Cache-Control','public, max-age=3600').send(seo.llmsFull({site:{name:'OpenVibe.Compare',url:'https://openvibe.compare'},summary:'Dated comparisons. Missing evidence is not zero.',sections,maxBytes:1500000}));
+ }));
  app.get('/',wrap(async(req,res)=>{
    // The AI card and the stat read /ai's own data; the home still answers when it is unreachable.
    const [all,compute,aiData]=await Promise.all([getData(),getCompute(),ai.comparison().catch(()=>null)]);res.vary('Accept');
