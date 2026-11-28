@@ -25,7 +25,7 @@ into Compare's own database or schema: expand, copy, verify, contract after the 
 Launch: Host register-compare.py registers port 5280 with a lifecycle override until the separate Contracts manifest is released. Use merge-deploy.sh, then ov-vhost-install for deploy/nginx/openvibe.compare.conf. No database or service credentials are required.
 
 <!-- versions:start -->
-- openvibe-contracts: v0.449.0
+- openvibe-contracts: v0.454.0
 - openvibe-sdk: v0.189.0
 - openvibe-shared: v4.337.0
 <!-- versions:end -->
