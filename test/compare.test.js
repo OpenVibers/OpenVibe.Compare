@@ -161,6 +161,10 @@ test('the sitemap, robots and llms.txt name the Compare AI pages',async()=>{
   const sitemap=await (await fetch(base+'/sitemap.xml')).text();for(const path of ['/ai','/ai/leaderboard','/ai/providers','/ai/method','/ai/detect','/ai/models/maker%2Falpha','/ai/chat.arena'])assert(sitemap.includes(`https://openvibe.compare${path}`),path);assert.doesNotMatch(sitemap,/openvibe\.compare\/arena</,'the arena is noindex: never in the sitemap');assert.doesNotMatch(sitemap,/\/comparisons\/ai-models/);assert.doesNotMatch(sitemap,/\/things\/maker%2Fm1/);
   const robots=await (await fetch(base+'/robots.txt')).text();assert.match(robots,/Allow: \/ai/);assert.match(robots,/https:\/\/openvibe\.compare\/sitemap\.xml/);
   const llms=await (await fetch(base+'/llms.txt')).text();assert.match(llms,/https:\/\/openvibe\.compare\/ai/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/leaderboard/);assert.match(llms,/https:\/\/openvibe\.compare\/ai\/models\/maker%2Falpha/);
+  // llms-full.txt (11-28: a 301 to itself): the pages llms.txt lists, as words.
+  const full=await fetch(base+'/llms-full.txt',{redirect:'manual'});assert.equal(full.status,200);const text=await full.text();
+  assert.ok(text.startsWith('# OpenVibe.Compare'));for(const path of ['/compute','/ai','/ai/leaderboard','/ai/providers'])assert.ok(text.includes(`https://openvibe.compare${path}\n`),path);
+  assert.ok(!/<(?:script|style|section|div)\b/i.test(text),'words, not markup');
  }finally{await new Promise(r=>server.close(r));}
 });
 

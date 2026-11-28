@@ -94,3 +94,13 @@ test('with Bench mounted, Compare answers Bench\'s API behind its own routes', a
         await ai.close?.();
     }
 });
+
+// Bench's redirects never send a page to itself (11-28: inside Compare, /llms-full.txt answered a 301 to itself).
+{
+    const assert = require('assert');
+    const { createCompareRedirects } = require('../server/bench/server/http/redirect');
+    const mw = createCompareRedirects({ compareUrl: 'https://openvibe.compare' });
+    const run = (host, path) => { let out = 'next'; mw({ method: 'GET', path, query: {}, get: (h) => (h === 'host' ? host : '') }, { set() {}, redirect: (code, to) => { out = `${code} ${to}`; } }, () => {}); return out; };
+    assert.strictEqual(run('openvibe.compare', '/llms-full.txt'), 'next', 'the same page on the same host is served, not redirected');
+    assert.strictEqual(run('bench.openvibe.services', '/llms-full.txt'), '301 https://openvibe.compare/llms-full.txt', 'from the old host it still moves');
+}
